@@ -12,11 +12,9 @@ libpk_backend_aptcc_la_SOURCES = pkg-list.cpp \
 				 apt-sourceslist.cpp \
 				 apt-cache-file.cpp \
 				 apt-intf.cpp \
-				 deb-file.cpp \
 				 pk-backend-aptcc.cpp
 libpk_backend_aptcc_la_LIBADD = -lcrypt \
 				-lapt-pkg \
-				$(APTINST_LIBS) \
 				-lutil \
 				$(PK_PLUGIN_LIBS)
 libpk_backend_aptcc_la_LDFLAGS = -module \
@@ -44,7 +42,6 @@ EXTRA_DIST = 20packagekit \
 	     apt-messages.h \
 	     apt-cache-file.h \
 	     gst-matcher.h \
-	     deb-file.h \
 	     acqpkitstatus.h
 
 helperdir = $(datadir)/PackageKit/helpers/aptcc
