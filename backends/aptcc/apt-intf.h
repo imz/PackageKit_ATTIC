@@ -68,14 +68,6 @@ public:
     void refreshCache();
 
     /**
-      * Tries to resolve a pkg file installation of the given \sa file
-      * @param install is where the packages to be installed will be stored
-      * @param remove is where the packages to be removed will be stored
-      * @returns true if the package can be installed
-      */
-    bool markFileForInstall(std::string const &file);
-
-    /**
       * Marks the given packages as auto installed
       */
     void markAutoInstalled(const PkgList &pkgs);
@@ -207,11 +199,6 @@ public:
     void emitPackageFiles(const gchar *pi);
 
     /**
-      *  Emits the files of a package
-      */
-    void emitPackageFilesLocal(const gchar *file);
-
-    /**
       *  Download and install packages
       */
     bool installPackages(PkBitfield flags);
@@ -241,7 +228,6 @@ public:
 
 private:
     void setEnvLocaleFromJob();
-    bool checkTrusted(pkgAcquire &fetcher, PkBitfield flags);
     bool packageIsSupported(const pkgCache::VerIterator &verIter, string component);
     bool isApplication(const pkgCache::VerIterator &verIter);
     bool matchesQueries(const vector<string> &queries, string s);
@@ -258,7 +244,6 @@ private:
     bool       m_cancel;
     struct stat m_restartStat;
 
-    bool m_isMultiArch;
     PkgList m_pkgs;
     PkgList m_restartPackages;
 
