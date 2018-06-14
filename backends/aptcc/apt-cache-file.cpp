@@ -25,12 +25,10 @@
 #include <cstdio>
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/progress.h>
-#include <apt-pkg/upgrade.h>
+#include <apt-pkg/error.h>
 
 #include "apt-utils.h"
 #include "apt-messages.h"
-
-using namespace APT;
 
 AptCacheFile::AptCacheFile(PkBackendJob *job) :
     m_packageRecords(0),
@@ -46,7 +44,7 @@ AptCacheFile::~AptCacheFile()
 bool AptCacheFile::Open(bool withLock)
 {
     OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::Open(&progress, withLock);
+    return pkgCacheFile::Open(progress, withLock);
 }
 
 void AptCacheFile::Close()
@@ -65,7 +63,7 @@ void AptCacheFile::Close()
 bool AptCacheFile::BuildCaches(bool withLock)
 {
     OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::BuildCaches(&progress, withLock);
+    return pkgCacheFile::BuildCaches(progress, withLock);
 }
 
 bool AptCacheFile::CheckDeps(bool AllowBroken)
@@ -114,8 +112,7 @@ bool AptCacheFile::CheckDeps(bool AllowBroken)
 
 bool AptCacheFile::DistUpgrade()
 {
-    OpPackageKitProgress progress(m_job);
-    return Upgrade::Upgrade(*this, Upgrade::ALLOW_EVERYTHING, &progress);
+    return pkgDistUpgrade(*DCache);
 }
 
 void AptCacheFile::ShowBroken(bool Now, PkErrorEnum error)
@@ -261,27 +258,9 @@ void AptCacheFile::buildPkgRecords()
     m_packageRecords = new pkgRecords(*this);
 }
 
-bool AptCacheFile::isGarbage(const pkgCache::PkgIterator &pkg)
-{
-    return (*this)[pkg].Garbage;
-}
-
 bool AptCacheFile::doAutomaticRemove()
 {
-    pkgDepCache::ActionGroup group(*this);
-
-    // look over the cache to see what can be removed
-    for (pkgCache::PkgIterator Pkg = (*this)->PkgBegin(); ! Pkg.end(); ++Pkg) {
-        if ((*this)[Pkg].Garbage) {
-            if (Pkg.CurrentVer() != 0 &&
-                    Pkg->CurrentState != pkgCache::State::ConfigFiles) {
-                // TODO, packagekit could provide a way to purge
-                (*this)->MarkDelete(Pkg, false);
-            } else {
-                (*this)->MarkKeep(Pkg, false, false);
-            }
-        }
-    }
+    pkgAutoremove(*DCache);
 
     // Now see if we destroyed anything
     if ((*this)->BrokenCount() != 0) {
@@ -361,7 +340,7 @@ PkgInfo AptCacheFile::resolvePkgID(const gchar *packageId)
     pkgCache::PkgIterator pkg;
 
     parts = pk_package_id_split(packageId);
-    pkg = (*this)->FindPkg(parts[PK_PACKAGE_ID_NAME], parts[PK_PACKAGE_ID_ARCH]);
+    pkg = (*this)->FindPkg(parts[PK_PACKAGE_ID_NAME]);
 
     // Ignore packages that could not be found or that exist only due to dependencies.
     if (pkg.end() || (pkg.VersionList().end() && pkg.ProvidesList().end()))
@@ -447,17 +426,7 @@ std::string AptCacheFile::getShortDescription(const pkgCache::VerIterator &ver)
         return string();
     }
 
-    pkgCache::DescIterator d = ver.TranslatedDescription();
-    if (d.end()) {
-        return string();
-    }
-
-    pkgCache::DescFileIterator df = d.FileList();
-    if (df.end()) {
-        return string();
-    } else {
-        return m_packageRecords->Lookup(df).ShortDesc();
-    }
+    return m_packageRecords->Lookup(ver.FileList()).ShortDesc();
 }
 
 std::string AptCacheFile::getLongDescription(const pkgCache::VerIterator &ver)
@@ -466,17 +435,7 @@ std::string AptCacheFile::getLongDescription(const pkgCache::VerIterator &ver)
         return string();
     }
 
-    pkgCache::DescIterator d = ver.TranslatedDescription();
-    if (d.end()) {
-        return string();
-    }
-
-    pkgCache::DescFileIterator df = d.FileList();
-    if (df.end()) {
-        return string();
-    } else {
-        return m_packageRecords->Lookup(df).LongDesc();
-    }
+    return m_packageRecords->Lookup(ver.FileList()).LongDesc();
 }
 
 std::string AptCacheFile::getLongDescriptionParsed(const pkgCache::VerIterator &ver)
@@ -535,7 +494,7 @@ bool AptCacheFile::tryToInstall(pkgProblemResolver &Fix,
     //   We probably should change the return value behavior and have the callee decide whether to
     //   error out or call us again with autoinst. This however is further complicated by us
     //   having protected, so we'd have to lift protection before this?
-    GetDepCache()->MarkInstall(Pkg, autoInst, 0, fromUser);
+    GetDepCache()->MarkInstall(Pkg, (fromUser ? pkgDepCache::AutoMarkFlag::Manual : pkgDepCache::AutoMarkFlag::Auto), autoInst, 0);
     // Protect against further resolver changes.
     Fix.Clear(Pkg);
     Fix.Protect(Pkg);
