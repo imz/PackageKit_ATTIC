@@ -71,24 +71,21 @@ public:
      */
     void ShowBroken(bool Now, PkErrorEnum error = PK_ERROR_ENUM_DEP_RESOLUTION_FAILED);
 
+    inline pkgCache* GetPkgCache() { BuildCaches(); return Cache; }
+
     inline pkgRecords* GetPkgRecords() { buildPkgRecords(); return m_packageRecords; }
 
     /**
       * GetPolicy will build the policy object if needed and return it
       * @note This override if because the cache should be built before the policy
       */
-    inline pkgPolicy* GetPolicy() { BuildCaches(); BuildPolicy(); return Policy; }
+    inline pkgPolicy* GetPolicy() { BuildCaches(); return Policy; }
 
     /**
       * GetDepCache will build the dependency cache if needed and return it
       * @note This override if because the policy should be built before the dependency cache
       */
-    inline pkgDepCache* GetDepCache() { BuildCaches(); BuildPolicy(); BuildDepCache(); return DCache; }
-
-    /**
-     * Checks if the package is garbage (not depended on)
-     */
-    bool isGarbage(const pkgCache::PkgIterator &pkg);
+    inline pkgDepCache* GetDepCache() { BuildCaches(); return DCache; }
 
     /**
      * DoAutomaticRemove - Remove all automatic unused packages
