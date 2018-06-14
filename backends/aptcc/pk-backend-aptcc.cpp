@@ -133,11 +133,6 @@ PkBitfield pk_backend_get_filters(PkBackend *backend)
                 PK_FILTER_ENUM_DOWNLOADED,
                 -1);
 
-    // if we have multiArch support we add the native filter
-    if (APT::Configuration::getArchitectures(false).size() > 1) {
-        pk_bitfield_add(filters, PK_FILTER_ENUM_ARCH);
-    }
-
     return filters;
 }
 
@@ -333,24 +328,6 @@ void pk_backend_get_update_detail(PkBackend *backend, PkBackendJob *job, gchar *
 void pk_backend_get_details(PkBackend *backend, PkBackendJob *job, gchar **package_ids)
 {
     pk_backend_job_thread_create(job, backend_get_details_thread, NULL, NULL);
-}
-
-static void backend_get_files_local_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
-{
-    gchar **files = nullptr;
-    g_variant_get(params, "(^a&s)",
-                  &files);
-
-    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
-
-    for (int i = 0; i < g_strv_length(files); ++i) {
-        apt->emitPackageFilesLocal(files[i]);
-    }
-}
-
-void pk_backend_get_files_local(PkBackend *backend, PkBackendJob *job, gchar **files)
-{
-    pk_backend_job_thread_create(job, backend_get_files_local_thread, NULL, NULL);
 }
 
 static void backend_get_updates_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
@@ -1045,7 +1022,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_DEPENDS_ON,
                 PK_ROLE_ENUM_GET_DETAILS,
                 PK_ROLE_ENUM_GET_FILES,
-                PK_ROLE_ENUM_GET_FILES_LOCAL,
                 PK_ROLE_ENUM_REQUIRED_BY,
                 PK_ROLE_ENUM_GET_PACKAGES,
                 PK_ROLE_ENUM_WHAT_PROVIDES,
