@@ -22,6 +22,8 @@
 
 #include <algorithm>
 
+#include <string.h>
+
 // compare...uses the candidate version of each package.
 class compare
 {
