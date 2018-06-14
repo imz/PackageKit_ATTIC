@@ -29,6 +29,7 @@
 #include <pk-backend-spawn.h>
 
 #include <apt-pkg/init.h>
+#include <apt-pkg/error.h>
 
 #include "apt-intf.h"
 #include "apt-cache-file.h"
@@ -128,11 +129,6 @@ PkBitfield pk_backend_get_filters(PkBackend *backend)
                 PK_FILTER_ENUM_APPLICATION,
                 PK_FILTER_ENUM_DOWNLOADED,
                 -1);
-
-    // if we have multiArch support we add the native filter
-    if (APT::Configuration::getArchitectures(false).size() > 1) {
-        pk_bitfield_add(filters, PK_FILTER_ENUM_ARCH);
-    }
 
     return filters;
 }
@@ -351,24 +347,6 @@ void pk_backend_get_details_local(PkBackend *backend, PkBackendJob *job, gchar *
     pk_backend_job_thread_create(job, backend_get_details_thread, NULL, NULL);
 }
 
-static void backend_get_files_local_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
-{
-    gchar **files = nullptr;
-    g_variant_get(params, "(^a&s)",
-                  &files);
-
-    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
-
-    for (int i = 0; i < g_strv_length(files); ++i) {
-        apt->emitPackageFilesLocal(files[i]);
-    }
-}
-
-void pk_backend_get_files_local(PkBackend *backend, PkBackendJob *job, gchar **files)
-{
-    pk_backend_job_thread_create(job, backend_get_files_local_thread, NULL, NULL);
-}
-
 static void backend_get_updates_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
 {
     PkBitfield filters;
@@ -556,35 +534,6 @@ void pk_backend_download_packages(PkBackend *backend,
                                   const gchar *directory)
 {
     pk_backend_job_thread_create(job, pk_backend_download_packages_thread, NULL, NULL);
-}
-
-static void pk_backend_refresh_cache_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
-{
-    pk_backend_job_set_allow_cancel(job, true);
-
-    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
-    if (!apt->init()) {
-        g_debug("Failed to create apt cache");
-        return;
-    }
-    
-    PkBackend *backend = PK_BACKEND(pk_backend_job_get_backend(job));
-    if (pk_backend_is_online(backend)) {
-        apt->refreshCache();
-        
-        if (_error->PendingError() == true) {
-            show_errors(job, PK_ERROR_ENUM_CANNOT_FETCH_SOURCES, true);
-        }
-    } else {
-        pk_backend_job_error_code(job,
-                                  PK_ERROR_ENUM_NO_NETWORK,
-                                  "Cannot refresh cache whilst offline");
-    }
-}
-
-void pk_backend_refresh_cache(PkBackend *backend, PkBackendJob *job, gboolean force)
-{
-    pk_backend_job_thread_create(job, pk_backend_refresh_cache_thread, NULL, NULL);
 }
 
 static void pk_backend_resolve_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
@@ -1063,7 +1012,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_GET_DETAILS,
                 PK_ROLE_ENUM_GET_DETAILS_LOCAL,
                 PK_ROLE_ENUM_GET_FILES,
-                PK_ROLE_ENUM_GET_FILES_LOCAL,
                 PK_ROLE_ENUM_REQUIRED_BY,
                 PK_ROLE_ENUM_GET_PACKAGES,
                 PK_ROLE_ENUM_WHAT_PROVIDES,
@@ -1071,7 +1019,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_GET_UPDATE_DETAIL,
                 PK_ROLE_ENUM_INSTALL_PACKAGES,
                 PK_ROLE_ENUM_INSTALL_SIGNATURE,
-                PK_ROLE_ENUM_REFRESH_CACHE,
                 PK_ROLE_ENUM_REMOVE_PACKAGES,
                 PK_ROLE_ENUM_DOWNLOAD_PACKAGES,
                 PK_ROLE_ENUM_RESOLVE,

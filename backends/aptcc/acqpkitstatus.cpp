@@ -23,6 +23,7 @@
 #include "apt-intf.h"
 
 #include <apt-pkg/acquire-worker.h>
+#include <apt-pkg/error.h>
 
 // AcqPackageKitStatus::AcqPackageKitStatus - Constructor
 // ---------------------------------------------------------------------
