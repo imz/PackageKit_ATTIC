@@ -46,12 +46,9 @@ EXTRA_DIST = 20packagekit \
 
 helperdir = $(datadir)/PackageKit/helpers/aptcc
 dist_helper_DATA =					\
-	pkconffile					\
-	pkconffile.nodiff				\
 	$(NULL)
 
 install-data-hook:
-	chmod +x $(DESTDIR)$(helperdir)/pkconffile
 
 clean-local :
 	rm -f *~
