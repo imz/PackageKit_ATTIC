@@ -219,7 +219,6 @@ public:
 
 private:
     void setEnvLocaleFromJob();
-    bool packageIsSupported(const pkgCache::VerIterator &verIter, string component);
     bool matchesQueries(const vector<string> &queries, string s);
 
     /**
