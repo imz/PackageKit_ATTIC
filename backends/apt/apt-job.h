@@ -247,7 +247,6 @@ private:
     bool packageIsSupported(const pkgCache::VerIterator &verIter, string component);
     bool isApplication(const pkgCache::VerIterator &verIter);
     bool matchesQueries(const vector<string> &queries, string s);
-    bool dpkgHasForceConfFileSet();
     PkInfoEnum packageStateFromVer(const pkgCache::VerIterator &ver) const;
     void stagePackageForEmit(GPtrArray *array, const pkgCache::VerIterator &ver,
                              PkInfoEnum state = PK_INFO_ENUM_UNKNOWN,
