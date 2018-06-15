@@ -47,12 +47,10 @@ EXTRA_DIST = 20packagekit \
 helperdir = $(datadir)/PackageKit/helpers/aptcc
 dist_helper_DATA =					\
 	get-distro-upgrade.py				\
-	pkconffile					\
-	pkconffile.nodiff				\
 	$(NULL)
 
 install-data-hook:
-	chmod +x $(DESTDIR)$(helperdir)/*.py $(DESTDIR)$(helperdir)/pkconffile
+	chmod +x $(DESTDIR)$(helperdir)/*.py
 
 clean-local :
 	rm -f *~
