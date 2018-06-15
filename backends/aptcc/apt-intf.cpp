@@ -268,17 +268,6 @@ bool AptIntf::matchPackage(const pkgCache::VerIterator &ver, PkBitfield filters)
             }
         }
 
-        // Check for supported packages
-        if (pk_bitfield_contain(filters, PK_FILTER_ENUM_SUPPORTED)) {
-            if (!packageIsSupported(ver, component)) {
-                return false;
-            }
-        } else if (pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_SUPPORTED)) {
-            if (packageIsSupported(ver, component)) {
-                return false;
-            }
-        }
-
         // TODO test this one..
 #if 0
         // I couldn'tfind any packages with the metapackages component, and I
@@ -455,26 +444,6 @@ void AptIntf::emitUpdates(PkgList &output, PkBitfield filters)
 
         // the default update info
         state = PK_INFO_ENUM_NORMAL;
-
-        // let find what kind of upgrade this is
-        pkgCache::VerFileIterator vf = pkgInfo.ver.FileList();
-        std::string origin  = vf.File().Origin() == NULL ? "" : vf.File().Origin();
-        std::string archive = vf.File().Archive() == NULL ? "" : vf.File().Archive();
-        std::string label   = vf.File().Label() == NULL ? "" : vf.File().Label();
-        if (origin.compare("Debian") == 0 ||
-                origin.compare("Ubuntu") == 0) {
-            if (ends_with(archive, "-security") ||
-                    label.compare("Debian-Security") == 0) {
-                state = PK_INFO_ENUM_SECURITY;
-            } else if (ends_with(archive, "-backports")) {
-                state = PK_INFO_ENUM_ENHANCEMENT;
-            } else if (ends_with(archive, "-updates")) {
-                state = PK_INFO_ENUM_BUGFIX;
-            }
-        } else if (origin.compare("Backports.org archive") == 0 ||
-                   ends_with(origin, "-backports")) {
-            state = PK_INFO_ENUM_ENHANCEMENT;
-        }
 
         emitPackage(pkgInfo.ver, state);
     }
@@ -1273,39 +1242,6 @@ void AptIntf::providesMimeType(PkgList &output, gchar **values)
                                       "No AppStream metadata was found. This means we are unable to find any information for your request.");
         }
     }
-}
-
-/**
-  * Check if package is officially supported by the current distribution
-  */
-bool AptIntf::packageIsSupported(const pkgCache::VerIterator &verIter, string component)
-{
-    string origin;
-    if (!verIter.end()) {
-        pkgCache::VerFileIterator vf = verIter.FileList();
-        origin = vf.File().Origin() == NULL ? "" : vf.File().Origin();
-    }
-
-    if (component.empty()) {
-        component = "main";
-    }
-
-    // Get a fetcher
-    AcqPackageKitStatus Stat(this, m_job);
-    pkgAcquire fetcher(&Stat);
-
-    PkBitfield flags = pk_backend_job_get_transaction_flags(m_job);
-
-    if ((origin.compare("Debian") == 0) || (origin.compare("Ubuntu") == 0))  {
-        if ((component.compare("main") == 0 ||
-             component.compare("restricted") == 0 ||
-             component.compare("unstable") == 0 ||
-             component.compare("testing") == 0)) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 /**
