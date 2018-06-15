@@ -63,8 +63,6 @@ public:
      */
     PkgList resolvePackageIds(gchar **package_ids, PkBitfield filters = PK_FILTER_ENUM_NONE);
 
-    PkgList resolveLocalFiles(gchar **localDebs);
-
     /**
       * Marks the given packages as auto installed
       */

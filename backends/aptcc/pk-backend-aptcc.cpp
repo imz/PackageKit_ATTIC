@@ -303,13 +303,8 @@ static void backend_get_details_thread(PkBackendJob *job, GVariant *params, gpoi
     PkRoleEnum role;
     role = pk_backend_job_get_role(job);
 
-    if (role == PK_ROLE_ENUM_GET_DETAILS_LOCAL) {
-        g_variant_get(params, "(^a&s)",
-                      &files);
-    } else {
-        g_variant_get(params, "(^a&s)",
-                      &package_ids);
-    }
+    g_variant_get(params, "(^a&s)",
+                  &package_ids);
 
     AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
     if (!apt->init(files)) {
@@ -319,11 +314,7 @@ static void backend_get_details_thread(PkBackendJob *job, GVariant *params, gpoi
 
     pk_backend_job_set_status(job, PK_STATUS_ENUM_QUERY);
     PkgList pkgs;
-    if (role == PK_ROLE_ENUM_GET_DETAILS_LOCAL) {
-        pkgs = apt->resolveLocalFiles(files);
-    } else {
-        pkgs = apt->resolvePackageIds(package_ids);
-    }
+    pkgs = apt->resolvePackageIds(package_ids);
 
     if (role == PK_ROLE_ENUM_GET_UPDATE_DETAIL) {
         apt->emitUpdateDetails(pkgs);
@@ -338,11 +329,6 @@ void pk_backend_get_update_detail(PkBackend *backend, PkBackendJob *job, gchar *
 }
 
 void pk_backend_get_details(PkBackend *backend, PkBackendJob *job, gchar **package_ids)
-{
-    pk_backend_job_thread_create(job, backend_get_details_thread, NULL, NULL);
-}
-
-void pk_backend_get_details_local(PkBackend *backend, PkBackendJob *job, gchar **files)
 {
     pk_backend_job_thread_create(job, backend_get_details_thread, NULL, NULL);
 }
@@ -691,12 +677,7 @@ static void backend_manage_packages_thread(PkBackendJob *job, GVariant *params, 
 
     // Get the transaction role since this method is called by install/remove/update/repair
     PkRoleEnum role = pk_backend_job_get_role(job);
-    if (role == PK_ROLE_ENUM_INSTALL_FILES) {
-        g_variant_get(params, "(t^a&s)",
-                      &transaction_flags,
-                      &full_paths);
-        fileInstall = true;
-    } else if (role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
+    if (role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
         g_variant_get(params, "(t^a&sbb)",
                       &transaction_flags,
                       &package_ids,
@@ -746,8 +727,6 @@ static void backend_manage_packages_thread(PkBackendJob *job, GVariant *params, 
             installPkgs = apt->resolvePackageIds(package_ids);
         } else if (role == PK_ROLE_ENUM_UPDATE_PACKAGES) {
             updatePkgs = apt->resolvePackageIds(package_ids);
-        } else if (role == PK_ROLE_ENUM_INSTALL_FILES) {
-            installPkgs = apt->resolveLocalFiles(full_paths);
         } else {
             pk_backend_job_error_code(job,
                                       PK_ERROR_ENUM_PACKAGE_NOT_FOUND,
@@ -1010,7 +989,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_CANCEL,
                 PK_ROLE_ENUM_DEPENDS_ON,
                 PK_ROLE_ENUM_GET_DETAILS,
-                PK_ROLE_ENUM_GET_DETAILS_LOCAL,
                 PK_ROLE_ENUM_GET_FILES,
                 PK_ROLE_ENUM_REQUIRED_BY,
                 PK_ROLE_ENUM_GET_PACKAGES,
@@ -1031,7 +1009,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_REPO_ENABLE,
                 PK_ROLE_ENUM_REPAIR_SYSTEM,
                 PK_ROLE_ENUM_REPO_REMOVE,
-                PK_ROLE_ENUM_INSTALL_FILES,
                 -1);
 
     // only add GetDistroUpgrades if the binary is present
