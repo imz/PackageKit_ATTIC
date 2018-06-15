@@ -2035,27 +2035,6 @@ void AptIntf::markAutoInstalled(const PkgList &pkgs)
     }
 }
 
-PkgList AptIntf::resolveLocalFiles(gchar **localDebs)
-{
-    PkgList ret;
-    for (int i = 0; i < g_strv_length(localDebs); ++i) {
-        pkgCache::PkgIterator const P = (*m_cache)->FindPkg(localDebs[i]);
-        if (P.end()) {
-            continue;
-        }
-
-        // Set any version providing the .deb as the candidate.
-        for (auto Prv = P.ProvidesList(); Prv.end() == false; Prv++) {
-            ret.push_back(Prv.OwnerVer());
-        }
-
-        // TODO do we need this?
-        // via cacheset to have our usual virtual handling
-        //APT::VersionContainerInterface::FromPackage(&(verset[MOD_INSTALL]), Cache, P, APT::CacheSetHelper::CANDIDATE, helper);
-    }
-    return ret;
-}
-
 bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, const PkgList &update,
                              bool fixBroken, PkBitfield flags, bool autoremove)
 {
