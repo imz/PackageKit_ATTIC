@@ -436,7 +436,7 @@ if test x$enable_dnf = xyes; then
 fi
 
 have_python_backend="no"
-if test x$enable_entropy = xyes -o x$enable_pisi = xyes -o x$enable_portage = xyes -o x$enable_yum = xyes; then
+if test x$enable_entropy = xyes -o x$enable_pisi = xyes -o x$enable_portage = xyes -o x$enable_yum = xyes -o x$enable_aptcc = xyes; then
 	have_python_backend="yes"
 fi
 AM_CONDITIONAL(HAVE_PYTHON_BACKEND, test x$have_python_backend = xyes)
