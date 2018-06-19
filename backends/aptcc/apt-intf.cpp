@@ -1229,8 +1229,12 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
     // Non-owner pointer
     RPMDBHandler *db_handler = rpmSys.GetDBHandler();
 
-    for (Header header = db_handler->GetHeader(); header; db_handler->Skip(), header = db_handler->GetHeader())
+    db_handler->Rewind();
+
+    while (db_handler->Skip())
     {
+        Header header = db_handler->GetHeader();
+
         if (m_cancel) {
             break;
         }
@@ -1247,8 +1251,7 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
         if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) != 1)
             && (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) != 1))
         {
-            g_debug("Rpmdb processing error");
-            return output;
+            continue;
         }
 
         while ((FileName = rpmtdNextString(fileNames)) != NULL)
