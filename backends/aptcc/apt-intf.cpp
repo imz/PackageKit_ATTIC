@@ -1476,24 +1476,33 @@ void AptIntf::emitPackageFiles(const gchar *pi)
 
     g_auto(GStrv) parts = pk_package_id_split(pi);
 
-    string fName;
-    fName = "/var/lib/dpkg/info/" +
-            string(parts[PK_PACKAGE_ID_NAME]) +
-            ":" +
-            string(parts[PK_PACKAGE_ID_ARCH]) +
-            ".list";
-    if (!FileExists(fName)) {
-        // if the file was not found try without the arch field
-        fName = "/var/lib/dpkg/info/" +
-                string(parts[PK_PACKAGE_ID_NAME]) +
-                ".list";
-    }
+    // Non-owner pointer
+    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
 
-    if (FileExists(fName)) {
-        ifstream in(fName.c_str());
-        if (!in != 0) {
-            return;
+    // It's currently impossible to jump to specific package, have to search through all
+    db_handler->Rewind();
+
+    while (db_handler->Skip())
+    {
+        Header header = db_handler->GetHeader();
+        if (!header)
+        {
+            continue;
         }
+
+        if (strcmp(headerGetString(header, RPMTAG_NAME), parts[PK_PACKAGE_ID_NAME]) != 0)
+        {
+            continue;
+        }
+
+        const char *FileName;
+        rpmtd fileNames = rpmtdNew();
+
+        BOOST_SCOPE_EXIT( (&fileNames) )
+        {
+            rpmtdFreeData(fileNames);
+            rpmtdFree(fileNames);
+        } BOOST_SCOPE_EXIT_END;
 
         files = g_ptr_array_new_with_free_func(g_free);
 
@@ -1502,10 +1511,12 @@ void AptIntf::emitPackageFiles(const gchar *pi)
             g_ptr_array_unref(files);
         } BOOST_SCOPE_EXIT_END;
 
-        while (in.eof() == false) {
-            getline(in, line);
-            if (!line.empty()) {
-                g_ptr_array_add(files, g_strdup(line.c_str()));
+        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) == 1)
+            || (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) == 1))
+        {
+            while ((FileName = rpmtdNextString(fileNames)) != NULL)
+            {
+                g_ptr_array_add(files, g_strdup(FileName));
             }
         }
 
@@ -1513,6 +1524,7 @@ void AptIntf::emitPackageFiles(const gchar *pi)
             g_ptr_array_add(files, NULL);
             pk_backend_job_files(m_job, pi, (gchar **) files->pdata);
         }
+        break;
     }
 }
 
