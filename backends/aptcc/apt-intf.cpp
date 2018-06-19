@@ -1402,36 +1402,50 @@ void AptIntf::providesMimeType(PkgList &output, gchar **values)
 bool AptIntf::isApplication(const pkgCache::VerIterator &ver)
 {
     bool ret = false;
-    gchar *fileName;
-    string line;
 
-    fileName = g_strdup_printf("/var/lib/dpkg/info/%s:%s.list",
-                               ver.ParentPkg().Name(),
-                               ver.Arch());
-    if (!FileExists(fileName)) {
-        g_free(fileName);
-        // if the file was not found try without the arch field
-        fileName = g_strdup_printf("/var/lib/dpkg/info/%s.list",
-                                   ver.ParentPkg().Name());
-    }
+    // Non-owner pointer
+    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
 
-    if (FileExists(fileName)) {
-        ifstream in(fileName);
-        if (!in != 0) {
-            g_free(fileName);
-            return false;
+    // It's currently impossible to jump to specific package, have to search through all
+    db_handler->Rewind();
+
+    while (db_handler->Skip())
+    {
+        Header header = db_handler->GetHeader();
+        if (!header)
+        {
+            continue;
         }
 
-        while (in.eof() == false) {
-            getline(in, line);
-            if (ends_with(line, ".desktop")) {
-                ret = true;
-                break;
+        if (strcmp(headerGetString(header, RPMTAG_NAME), ver.ParentPkg().Name()) != 0)
+        {
+            continue;
+        }
+
+        const char *FileName;
+        rpmtd fileNames = rpmtdNew();
+
+        BOOST_SCOPE_EXIT( (&fileNames) )
+        {
+            rpmtdFreeData(fileNames);
+            rpmtdFree(fileNames);
+        } BOOST_SCOPE_EXIT_END;
+
+        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) == 1)
+            || (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) == 1))
+        {
+            while ((FileName = rpmtdNextString(fileNames)) != NULL)
+            {
+                if (ends_with(FileName, ".desktop"))
+                {
+                    ret = true;
+                    break;
+                }
             }
         }
+        break;
     }
 
-    g_free(fileName);
     return ret;
 }
 
