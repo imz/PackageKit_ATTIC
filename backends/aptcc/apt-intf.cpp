@@ -34,8 +34,11 @@
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/pkgsystem.h>
 #include <apt-pkg/version.h>
+#include <apt-pkg/rpmsystem.h>
 
 #include <appstream.h>
+
+#include <boost/scope_exit.hpp>
 
 #include <sys/statvfs.h>
 #include <sys/statfs.h>
@@ -1165,7 +1168,7 @@ PkgList AptIntf::searchPackageDetails(const vector<string> &queries)
     return output;
 }
 
-// used to return files it reads, using the info from the files in /var/lib/dpkg/info/
+// used to return files it reads
 PkgList AptIntf::searchPackageFiles(gchar **values)
 {
     PkgList output;
@@ -1198,39 +1201,48 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
         return output;
     }
 
-    DIR *dp;
-    struct dirent *dirp;
-    if (!(dp = opendir("/var/lib/dpkg/info/"))) {
-        g_debug ("Error opening /var/lib/dpkg/info/\n");
+    BOOST_SCOPE_EXIT( (&re) )
+    {
         regfree(&re);
-        return output;
-    }
+    } BOOST_SCOPE_EXIT_END;
 
-    string line;
-    while ((dirp = readdir(dp)) != NULL) {
+    // Non-owner pointer
+    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
+
+    for (Header header = db_handler->GetHeader(); header; db_handler->Skip(), header = db_handler->GetHeader())
+    {
         if (m_cancel) {
             break;
         }
 
-        if (ends_with(dirp->d_name, ".list")) {
-            string file(dirp->d_name);
-            string f = "/var/lib/dpkg/info/" + file;
-            ifstream in(f.c_str());
-            if (!in != 0) {
-                continue;
-            }
+        const char *FileName;
+        rpmtd fileNames = rpmtdNew();
 
-            while (!in.eof()) {
-                getline(in, line);
-                if (regexec(&re, line.c_str(), (size_t)0, NULL, 0) == 0) {
-                    packages.push_back(file.erase(file.size() - 5, file.size()));
-                    break;
+        BOOST_SCOPE_EXIT( (&fileNames) )
+        {
+            rpmtdFreeData(fileNames);
+            rpmtdFree(fileNames);
+        } BOOST_SCOPE_EXIT_END;
+
+        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) != 1)
+            && (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) != 1))
+        {
+            g_debug("Rpmdb processing error");
+            return output;
+        }
+
+        while ((FileName = rpmtdNextString(fileNames)) != NULL)
+        {
+            if (regexec(&re, FileName, (size_t)0, NULL, 0) == 0)
+            {
+                const char *packageName = headerGetString(header, RPMTAG_NAME);
+                if (packageName)
+                {
+                    packages.push_back(packageName);
                 }
             }
         }
     }
-    closedir(dp);
-    regfree(&re);
 
     // Resolve the package names now
     for (const string &name : packages) {
