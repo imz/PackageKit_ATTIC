@@ -30,128 +30,137 @@
 
 #include <fstream>
 #include <regex>
+#include <map>
+
+static const std::map<std::string, PkGroupEnum> groups_map = {
+    { "Accessibility", PK_GROUP_ENUM_ACCESSIBILITY },
+    { "Archiving/Backup", PK_GROUP_ENUM_ADMIN_TOOLS },
+    { "Archiving/Cd burning", PK_GROUP_ENUM_ACCESSORIES },
+    { "Archiving/Compression", PK_GROUP_ENUM_ACCESSORIES },
+    { "Archiving/Other", PK_GROUP_ENUM_ACCESSORIES },
+    { "Books/Computer books", PK_GROUP_ENUM_DOCUMENTATION },
+    { "Books/Faqs", PK_GROUP_ENUM_DOCUMENTATION },
+    { "Books/Howtos", PK_GROUP_ENUM_DOCUMENTATION },
+    { "Books/Literature", PK_GROUP_ENUM_EDUCATION },
+    { "Books/Other", PK_GROUP_ENUM_EDUCATION },
+    { "Communications", PK_GROUP_ENUM_COMMUNICATION },
+    { "Databases", PK_GROUP_ENUM_OTHER },
+    { "Development/C", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/C++", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Databases", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Debug", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Debuggers", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Documentation", PK_GROUP_ENUM_DOCUMENTATION },
+    { "Development/Erlang", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Functional", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/GNOME and GTK+", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Haskell", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Java", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/KDE and QT", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Kernel", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Lisp", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/ML", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Objective-C", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Other", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Perl", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Python", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Python3", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Ruby", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Scheme", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Tcl", PK_GROUP_ENUM_PROGRAMMING },
+    { "Development/Tools", PK_GROUP_ENUM_PROGRAMMING },
+    { "Documentation", PK_GROUP_ENUM_DOCUMENTATION },
+    { "Editors", PK_GROUP_ENUM_PUBLISHING },
+    { "Education", PK_GROUP_ENUM_EDUCATION },
+    { "Emulators", PK_GROUP_ENUM_SYSTEM },
+    { "Engineering", PK_GROUP_ENUM_ELECTRONICS },
+    { "File tools", PK_GROUP_ENUM_ACCESSORIES },
+    { "Games/Adventure", PK_GROUP_ENUM_GAMES },
+    { "Games/Arcade", PK_GROUP_ENUM_GAMES },
+    { "Games/Boards", PK_GROUP_ENUM_GAMES },
+    { "Games/Cards", PK_GROUP_ENUM_GAMES },
+    { "Games/Educational", PK_GROUP_ENUM_GAMES },
+    { "Games/Other", PK_GROUP_ENUM_GAMES },
+    { "Games/Puzzles", PK_GROUP_ENUM_GAMES },
+    { "Games/Sports", PK_GROUP_ENUM_GAMES },
+    { "Games/Strategy", PK_GROUP_ENUM_GAMES },
+    { "Graphical desktop/Enlightenment", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/FVWM based", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/GNOME", PK_GROUP_ENUM_DESKTOP_GNOME },
+    { "Graphical desktop/GNUstep", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Icewm", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/KDE", PK_GROUP_ENUM_DESKTOP_KDE },
+    { "Graphical desktop/MATE", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Motif", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Other", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Rox", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Sawfish", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Sugar", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/Window Maker", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Graphical desktop/XFce", PK_GROUP_ENUM_DESKTOP_XFCE },
+    { "Graphics", PK_GROUP_ENUM_GRAPHICS },
+    { "Monitoring", PK_GROUP_ENUM_ACCESSORIES },
+    { "Networking/Chat", PK_GROUP_ENUM_COMMUNICATION },
+    { "Networking/DNS", PK_GROUP_ENUM_NETWORK },
+    { "Networking/File transfer", PK_GROUP_ENUM_NETWORK },
+    { "Networking/FTN", PK_GROUP_ENUM_NETWORK },
+    { "Networking/IRC", PK_GROUP_ENUM_COMMUNICATION },
+    { "Networking/Instant messaging", PK_GROUP_ENUM_COMMUNICATION },
+    { "Networking/Mail", PK_GROUP_ENUM_INTERNET },
+    { "Networking/News", PK_GROUP_ENUM_INTERNET },
+    { "Networking/Other", PK_GROUP_ENUM_NETWORK },
+    { "Networking/Remote access", PK_GROUP_ENUM_NETWORK },
+    { "Networking/WWW", PK_GROUP_ENUM_INTERNET },
+    { "Office", PK_GROUP_ENUM_OFFICE },
+    { "Other", PK_GROUP_ENUM_OTHER },
+    { "Publishing", PK_GROUP_ENUM_PUBLISHING },
+    { "Sciences/Astronomy", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Biology", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Chemistry", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Computer science", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Geosciences", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Mathematics", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Medicine", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Other", PK_GROUP_ENUM_SCIENCE },
+    { "Sciences/Physics", PK_GROUP_ENUM_SCIENCE },
+    { "Security/Antivirus", PK_GROUP_ENUM_SCIENCE },
+    { "Security/Networking", PK_GROUP_ENUM_SCIENCE },
+    { "Shells", PK_GROUP_ENUM_SYSTEM },
+    { "Sound", PK_GROUP_ENUM_MULTIMEDIA },
+    { "System/Base", PK_GROUP_ENUM_SYSTEM },
+    { "System/Configuration/Boot and Init", PK_GROUP_ENUM_SYSTEM },
+    { "System/Configuration/Hardware", PK_GROUP_ENUM_ADMIN_TOOLS },
+    { "System/Configuration/Networking", PK_GROUP_ENUM_NETWORK },
+    { "System/Configuration/Other", PK_GROUP_ENUM_SYSTEM },
+    { "System/Configuration/Packaging", PK_GROUP_ENUM_ADMIN_TOOLS },
+    { "System/Configuration/Printing", PK_GROUP_ENUM_SYSTEM },
+    { "System/Fonts/Console", PK_GROUP_ENUM_FONTS },
+    { "System/Fonts/True type", PK_GROUP_ENUM_FONTS },
+    { "System/Fonts/Type1", PK_GROUP_ENUM_FONTS },
+    { "System/Fonts/X11 bitmap", PK_GROUP_ENUM_FONTS },
+    { "System/Internationalization", PK_GROUP_ENUM_LOCALIZATION },
+    { "System/Kernel and hardware", PK_GROUP_ENUM_ADMIN_TOOLS },
+    { "System/Libraries", PK_GROUP_ENUM_SYSTEM },
+    { "System/Legacy libraries", PK_GROUP_ENUM_LEGACY },
+    { "System/Servers", PK_GROUP_ENUM_SERVERS },
+    { "System/Servers/ZProducts", PK_GROUP_ENUM_UNKNOWN },
+    { "System/X11", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "System/XFree86", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Terminals", PK_GROUP_ENUM_DESKTOP_OTHER },
+    { "Text tools", PK_GROUP_ENUM_PUBLISHING },
+    { "Toys", PK_GROUP_ENUM_GAMES },
+    { "Video", PK_GROUP_ENUM_MULTIMEDIA },
+};
 
 PkGroupEnum get_enum_group(string group)
 {
-    if (group.compare ("admin") == 0) {
-        return PK_GROUP_ENUM_ADMIN_TOOLS;
-    } else if (group.compare ("base") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("cli-mono") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("comm") == 0) {
-        return PK_GROUP_ENUM_COMMUNICATION;
-    } else if (group.compare ("database") == 0) {
-        return PK_GROUP_ENUM_ADMIN_TOOLS;
-    } else if (group.compare ("debug") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("devel") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("doc") == 0) {
-        return PK_GROUP_ENUM_DOCUMENTATION;
-    } else if (group.compare ("editors") == 0) {
-        return PK_GROUP_ENUM_PUBLISHING;
-    } else if (group.compare ("education") == 0) {
-        return PK_GROUP_ENUM_EDUCATION;
-    } else if (group.compare ("electronics") == 0) {
-        return PK_GROUP_ENUM_ELECTRONICS;
-    } else if (group.compare ("embedded") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("fonts") == 0) {
-        return PK_GROUP_ENUM_FONTS;
-    } else if (group.compare ("games") == 0) {
-        return PK_GROUP_ENUM_GAMES;
-    } else if (group.compare ("gnome") == 0) {
-        return PK_GROUP_ENUM_DESKTOP_GNOME;
-    } else if (group.compare ("gnu-r") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("gnustep") == 0) {
-        return PK_GROUP_ENUM_DESKTOP_OTHER;
-    } else if (group.compare ("golang") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("graphics") == 0) {
-        return PK_GROUP_ENUM_GRAPHICS;
-    } else if (group.compare ("hamradio") == 0) {
-        return PK_GROUP_ENUM_COMMUNICATION;
-    } else if (group.compare ("haskell") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("httpd") == 0) {
-        return PK_GROUP_ENUM_SERVERS;
-    } else if (group.compare ("interpreters") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("introspection") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("java") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("javascript") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("kde") == 0) {
-        return PK_GROUP_ENUM_DESKTOP_KDE;
-    } else if (group.compare ("kernel") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("libdevel") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("libs") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("lisp") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("mail") == 0) {
-        return PK_GROUP_ENUM_INTERNET;
-    } else if (group.compare ("math") == 0) {
-        return PK_GROUP_ENUM_SCIENCE;
-    } else if (group.compare ("misc") == 0) {
-        return PK_GROUP_ENUM_OTHER;
-    } else if (group.compare ("net") == 0) {
-        return PK_GROUP_ENUM_NETWORK;
-    } else if (group.compare ("news") == 0) {
-        return PK_GROUP_ENUM_INTERNET;
-    } else if (group.compare ("ocaml") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("oldlibs") == 0) {
-        return PK_GROUP_ENUM_LEGACY;
-    } else if (group.compare ("otherosfs") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("perl") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("php") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("python") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("ruby") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("rust") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("science") == 0) {
-        return PK_GROUP_ENUM_SCIENCE;
-    } else if (group.compare ("shells") == 0) {
-        return PK_GROUP_ENUM_SYSTEM;
-    } else if (group.compare ("sound") == 0) {
-        return PK_GROUP_ENUM_MULTIMEDIA;
-    } else if (group.compare ("tex") == 0) {
-        return PK_GROUP_ENUM_PUBLISHING;
-    } else if (group.compare ("text") == 0) {
-        return PK_GROUP_ENUM_PUBLISHING;
-    } else if (group.compare ("utils") == 0) {
-        return PK_GROUP_ENUM_ACCESSORIES;
-    } else if (group.compare ("vcs") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("video") == 0) {
-        return PK_GROUP_ENUM_MULTIMEDIA;
-    } else if (group.compare ("web") == 0) {
-        return PK_GROUP_ENUM_INTERNET;
-    } else if (group.compare ("x11") == 0) {
-        return PK_GROUP_ENUM_DESKTOP_OTHER;
-    } else if (group.compare ("xfce") == 0) {
-        return PK_GROUP_ENUM_DESKTOP_XFCE;
-    } else if (group.compare ("zope") == 0) {
-        return PK_GROUP_ENUM_PROGRAMMING;
-    } else if (group.compare ("alien") == 0) {
-        return PK_GROUP_ENUM_UNKNOWN;//FIXME alien is an unknown group?
-    } else if (group.compare ("translations") == 0) {
-        return PK_GROUP_ENUM_LOCALIZATION;
-    } else if (group.compare ("metapackages") == 0) {
-        return PK_GROUP_ENUM_COLLECTIONS;
-    } else {
+    auto iter = groups_map.find(group);
+    if (iter != groups_map.end())
+    {
+        return iter->second;
+    }
+    else
+    {
         return PK_GROUP_ENUM_UNKNOWN;
     }
 }
