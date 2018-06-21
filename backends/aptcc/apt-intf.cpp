@@ -676,10 +676,6 @@ void AptIntf::emitPackageDetail(const pkgCache::VerIterator &ver)
     const pkgCache::PkgIterator &pkg = ver.ParentPkg();
     std::string section = ver.Section() == NULL ? "" : ver.Section();
 
-    size_t found;
-    found = section.find_last_of("/");
-    section = section.substr(found + 1);
-
     pkgCache::VerFileIterator vf = ver.FileList();
     pkgRecords::Parser &rec = m_cache->GetPkgRecords()->Lookup(vf);
 
@@ -1026,10 +1022,6 @@ PkgList AptIntf::getPackagesFromGroup(gchar **values)
         const pkgCache::VerIterator &ver = m_cache->findVer(pkg);
         if (ver.end() == false) {
             string section = pkg.VersionList().Section() == NULL ? "" : pkg.VersionList().Section();
-
-            size_t found;
-            found = section.find_last_of("/");
-            section = section.substr(found + 1);
 
             // Don't insert virtual packages instead add what it provides
             for (PkGroupEnum group : groups) {
