@@ -7,6 +7,7 @@ After=sysinit.target dbus.socket systemd-journald.socket system-update-pre.targe
 Before=shutdown.target system-update.target
 # See packagekit.service
 ConditionPathExists=!/run/ostree-booted
+ConditionPathExists=!/var/lib/PackageKit/upgrade_lock
 
 [Service]
 Type=oneshot
