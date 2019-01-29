@@ -125,6 +125,27 @@ bool AptIntf::init(gchar **localDebs)
 
     int timeout = 10;
     // TODO test this
+    if (withLock) {
+        for (;;) {
+            m_fileFd.Fd(GetLock(_config->FindDir("Dir::Cache::Archives") + "lock"));
+            if (not _error->PendingError())
+            {
+                break;
+            }
+
+            if (timeout <= 0)
+            {
+                show_errors(m_job, PK_ERROR_ENUM_CANNOT_GET_LOCK);
+                return false;
+            }
+
+            _error->Discard();
+            pk_backend_job_set_status(m_job, PK_STATUS_ENUM_WAITING_FOR_LOCK);
+            sleep(1);
+            timeout--;
+        }
+    }
+
     while (m_cache->Open(withLock) == false) {
         if (withLock == false || (timeout <= 0)) {
             show_errors(m_job, PK_ERROR_ENUM_CANNOT_GET_LOCK);
