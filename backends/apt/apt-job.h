@@ -28,6 +28,7 @@
 
 #include <apt-pkg/depcache.h>
 #include <apt-pkg/acquire.h>
+#include <apt-pkg/fileutl.h>
 
 #include <pk-backend.h>
 
@@ -249,4 +250,6 @@ private:
     // when the internal terminal timesout after no activity
     int m_terminalTimeout;
     pid_t m_child_pid;
+
+    FileFd m_fileFd;
 };
