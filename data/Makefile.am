@@ -15,6 +15,7 @@ dist_dbus_DATA = 					\
 
 %.service: %.service.in Makefile
 	$(AM_V_GEN)sed -e 's|\@libexecdir\@|$(libexecdir)|' \
+	               -e 's|\@bindir\@|$(bindir)|' \
 	               -e 's|\@PACKAGEKIT_USER\@|$(PACKAGEKIT_USER)|' $< > $@.tmp && mv $@.tmp $@
 
 servicemaindir       = $(DBUS_SERVICES_DIR)
