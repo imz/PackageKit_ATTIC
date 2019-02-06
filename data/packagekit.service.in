@@ -12,7 +12,7 @@ Wants=network-online.target
 Type=dbus
 BusName=org.freedesktop.PackageKit
 User=@PACKAGEKIT_USER@
-ExecStart=@libexecdir@/packagekitd
+ExecStart=@libexecdir@/packagekitd --verbose
 # don't kill service immediately,
 # instead request it to quit after finishing current request
 ExecStop=@bindir@/pkcon quit
