@@ -183,7 +183,7 @@ bool AcqPackageKitStatus::Pulse(pkgAcquire *Owner)
 // AcqPackageKitStatus::MediaChange - Media need to be swapped
 // ---------------------------------------------------------------------
 /* Prompt for a media swap */
-bool AcqPackageKitStatus::MediaChange(string Media, string Drive)
+bool AcqPackageKitStatus::MediaChange(const string &Media, const string &Drive)
 {
     pk_backend_job_media_change_required(m_job,
                                          PK_MEDIA_TYPE_ENUM_DISC,
