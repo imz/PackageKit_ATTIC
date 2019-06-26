@@ -1944,7 +1944,7 @@ void AptJob::refreshCache()
     AcqPackageKitStatus Stat(this);
 
     // do the work
-    ListUpdate(Stat, *m_cache->GetSourceList());
+    ListUpdate(Stat, *m_cache->GetSourceList(), *m_cache);
 
     // Rebuild the cache.
     pkgCacheFile::RemoveCaches();
