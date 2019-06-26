@@ -520,6 +520,35 @@ void pk_backend_download_packages(PkBackend *backend,
     pk_backend_job_thread_create(job, pk_backend_download_packages_thread, NULL, NULL);
 }
 
+static void pk_backend_refresh_cache_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
+{
+    pk_backend_job_set_allow_cancel(job, true);
+
+    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
+    if (!apt->init()) {
+        g_debug("Failed to create apt cache");
+        return;
+    }
+
+    PkBackend *backend = PK_BACKEND(pk_backend_job_get_backend(job));
+    if (pk_backend_is_online(backend)) {
+        apt->refreshCache();
+
+        if (_error->PendingError() == true) {
+            show_errors(job, PK_ERROR_ENUM_CANNOT_FETCH_SOURCES, true);
+        }
+    } else {
+        pk_backend_job_error_code(job,
+                                  PK_ERROR_ENUM_NO_NETWORK,
+                                  "Cannot refresh cache whilst offline");
+    }
+}
+
+void pk_backend_refresh_cache(PkBackend *backend, PkBackendJob *job, gboolean force)
+{
+    pk_backend_job_thread_create(job, pk_backend_refresh_cache_thread, NULL, NULL);
+}
+
 static void pk_backend_resolve_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
 {
     gchar **search;
@@ -995,6 +1024,7 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_GET_UPDATE_DETAIL,
                 PK_ROLE_ENUM_INSTALL_PACKAGES,
                 PK_ROLE_ENUM_INSTALL_SIGNATURE,
+                PK_ROLE_ENUM_REFRESH_CACHE,
                 PK_ROLE_ENUM_REMOVE_PACKAGES,
                 PK_ROLE_ENUM_DOWNLOAD_PACKAGES,
                 PK_ROLE_ENUM_RESOLVE,

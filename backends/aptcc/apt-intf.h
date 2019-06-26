@@ -65,6 +65,11 @@ public:
     PkgList resolvePackageIds(gchar **package_ids, PkBitfield filters = PK_FILTER_ENUM_NONE);
 
     /**
+      * Refreshes the sources of packages
+      */
+    void refreshCache();
+
+    /**
       * Marks the given packages as auto installed
       */
     void markAutoInstalled(const PkgList &pkgs);

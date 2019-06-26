@@ -28,6 +28,7 @@
 #include <apt-pkg/error.h>
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/pkgsystem.h>
+#include <apt-pkg/update.h>
 #include <apt-pkg/version.h>
 #include <apt-pkg/sourcelist.h>
 #include <apt-pkg/rpmsystem.h>
@@ -1821,6 +1822,33 @@ PkgList AptIntf::resolvePackageIds(gchar **package_ids, PkBitfield filters)
     }
 
     return filterPackages(ret, filters);
+}
+
+void AptIntf::refreshCache()
+{
+    pk_backend_job_set_status(m_job, PK_STATUS_ENUM_REFRESH_CACHE);
+
+    if (m_cache->BuildSourceList() == false) {
+        return;
+    }
+
+    // Create the progress
+    AcqPackageKitStatus Stat(this, m_job);
+
+    // do the work
+    ListUpdate(Stat, *m_cache->GetSourceList(), *m_cache);
+
+    // Rebuild the cache.
+    pkgCacheFile::RemoveCaches();
+    if (m_cache->BuildCaches() == false) {
+        return;
+    }
+
+    // missing repo gpg signature would appear here
+    if (_error->PendingError() == false && _error->empty() == false) {
+        // TODO this shouldn't
+        show_errors(m_job, PK_ERROR_ENUM_GPG_FAILURE);
+    }
 }
 
 void AptIntf::markAutoInstalled(const PkgList &pkgs)
