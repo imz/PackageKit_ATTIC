@@ -2034,7 +2034,7 @@ void AptIntf::refreshCache()
     AcqPackageKitStatus Stat(this, m_job);
 
     // do the work
-    ListUpdate(Stat, *m_cache->GetSourceList());
+    ListUpdate(Stat, *m_cache->GetSourceList(), *m_cache);
 
     // Rebuild the cache.
     pkgCacheFile::RemoveCaches();
