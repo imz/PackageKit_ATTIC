@@ -434,17 +434,35 @@ string utilBuildPackageOriginId(pkgCache::VerFileIterator vf)
     //    seem a problem though. we'll allow them until otherwise indicated
     auto component = string(vf.File().Component());
 
-    // Origin is defined as 'a single line of free form text'.
-    // Sanitize it!
-    // All space characters, control characters and punctuation get replaced
-    // with underscore.
-    // In particular the punctuations ',' and ';' may be used as list separators
-    // so we must not have them appear in our package_ids as that would break
-    // any number of higher level features.
-    std::transform(origin.begin(), origin.end(), origin.begin(), ::tolower);
-    origin = std::regex_replace(origin, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+    std::string res;
 
-    string res = origin + "-" + suite + "-" + component;
+    if ((strcasecmp(origin.c_str(), "ALT Linux Team") == 0)
+        && (strncasecmp(suite.c_str(), "ALT Linux ", strlen("ALT Linux ")) == 0)
+        && (suite.length() > strlen("ALT Linux ")))
+    {
+       res = suite + " (" + component + ")";
+    }
+    else
+    {
+       // Origin is defined as 'a single line of free form text'.
+       // Sanitize it!
+       // All space characters, control characters and punctuation get replaced
+       // with underscore.
+       // In particular the punctuations ',' and ';' may be used as list separators
+       // so we must not have them appear in our package_ids as that would break
+       // any number of higher level features.
+       std::transform(origin.begin(), origin.end(), origin.begin(), ::tolower);
+       origin = std::regex_replace(origin, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+
+       std::transform(suite.begin(), suite.end(), suite.begin(), ::tolower);
+       suite = std::regex_replace(suite, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+
+       std::transform(component.begin(), component.end(), component.begin(), ::tolower);
+       component = std::regex_replace(component, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+
+       res = origin + "-" + suite + "-" + component;
+    }
+
     return res;
 }
 
