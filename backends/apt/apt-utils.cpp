@@ -429,6 +429,14 @@ string utilBuildPackageOriginId(pkgCache::VerFileIterator vf)
     //    seem a problem though. we'll allow them until otherwise indicated
     auto component = string(vf.File().Component());
 
+    if ((strcasecmp(origin.c_str(), "ALT Linux Team") == 0)
+        && (strncasecmp(suite.c_str(), "ALT Linux ", strlen("ALT Linux ")) == 0)
+        && (suite.length() > strlen("ALT Linux ")))
+    {
+       std::string res = suite + " (" + component + ")";
+       return res;
+    }
+
     // Origin is defined as 'a single line of free form text'.
     // Sanitize it!
     // All space characters, control characters and punctuation get replaced
