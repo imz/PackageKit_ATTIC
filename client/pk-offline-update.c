@@ -160,8 +160,7 @@ pk_offline_update_progress_cb (PkProgress *progress,
 			 * advise of the new percentage completion when installing updates */
 			msg = g_strdup_printf ("%s - %i%%", _("Installing Updates"), percentage);
 		}
-		if (percentage > 10)
-			pk_offline_update_set_plymouth_msg (msg);
+		pk_offline_update_set_plymouth_msg (msg);
 
 		/* print on terminal */
 		pk_progress_bar_set_percentage (progressbar, percentage);
