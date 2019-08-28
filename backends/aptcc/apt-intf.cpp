@@ -67,9 +67,9 @@ AptIntf::AptIntf(PkBackendJob *job) :
     m_job(job),
     m_cancel(false),
     m_lastSubProgress(0),
-    m_terminalTimeout(120)
+    m_terminalTimeout(120),
+    m_progress(OpPackageKitProgress(job))
 {
-    m_cancel = false;
 }
 
 bool AptIntf::init(gchar **localDebs)
@@ -146,7 +146,7 @@ bool AptIntf::init(gchar **localDebs)
     }
 
     // Create the AptCacheFile class to search for packages
-    m_cache = new AptCacheFile(m_job,withLock);
+    m_cache = new AptCacheFile(m_job, withLock, &m_progress);
     while (m_cache->Open() == false) {
         if (withLock == false || (timeout <= 0)) {
             show_errors(m_job, PK_ERROR_ENUM_CANNOT_GET_LOCK);
@@ -162,7 +162,7 @@ bool AptIntf::init(gchar **localDebs)
         // again (since pkgCacheFile is monotonic in creating required objects),
         // or simply continue with a new pkgCacheFile object.
         delete m_cache;
-        m_cache = new AptCacheFile(m_job,withLock);
+        m_cache = new AptCacheFile(m_job, withLock, &m_progress);
     }
 
     // default settings
@@ -1675,7 +1675,7 @@ void AptIntf::refreshCache()
 
     pkgCacheFile::RemoveCaches();
 
-    m_cache = new AptCacheFile(m_job, true /* withLock */);
+    m_cache = new AptCacheFile(m_job, true /* withLock */, &m_progress);
     // Setting WithLock implies not AllowMem in APT. (Building in memory only
     // would be a waste of time for refreshCache(): nothing saved to disk.)
     // So does apt-get update, too.
@@ -1729,6 +1729,8 @@ bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, cons
 
     // new scope for the ActionGroup
     {
+        m_progress.OverallProgress(0, install.size() + remove.size() + update.size(), 1, "updating");
+        unsigned long long processed_packages = 0;
         for (auto op : { Operation { install, false }, Operation { update, true } }) {
             // We first need to mark all manual selections with AutoInst=false, so they influence which packages
             // are chosen when resolving dependencies.
@@ -1749,6 +1751,7 @@ bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, cons
                                                attemptFixBroken)) {
                         return false;
                     }
+                    m_progress.Progress(++processed_packages);
                 }
             }
         }
@@ -1758,6 +1761,7 @@ bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, cons
                 break;
 
             m_cache->tryToRemove(Fix, pkInfo);
+            m_progress.Progress(++processed_packages);
         }
 
         // Call the scored problem resolver
@@ -1818,6 +1822,22 @@ bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, cons
     }
 
     return ret;
+}
+
+void AptIntf::showProgress(const char *nevra,
+                           const aptCallbackType what,
+                           const uint64_t amount,
+                           const uint64_t total,
+                           void *data)
+{
+    OpProgress *progress = (OpProgress *) data;
+    switch (what) {
+    case APTCALLBACK_ELEM_PROGRESS:
+        progress->OverallProgress(amount, total, 1, "Installing updates");
+        break;
+    default:
+        break;
+    }
 }
 
 /**
@@ -1977,155 +1997,9 @@ bool AptIntf::installPackages(PkBitfield flags)
     // Download should be finished by now, changing it's status
     pk_backend_job_set_percentage(m_job, PK_BACKEND_PERCENTAGE_INVALID);
 
-    // we could try to see if this is the case
-    g_setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", TRUE);
     _system->UnLock();
 
-    pkgPackageManager::OrderResult res;
-
-    // File descriptors for reading dpkg --status-fd
-    int readFromChildFD[2];
-    if (pipe(readFromChildFD) < 0) {
-        cout << "Failed to create a pipe" << endl;
-        return false;
-    }
-
-    int pty_master;
-    m_child_pid = forkpty(&pty_master, NULL, NULL, NULL);
-    if (m_child_pid == -1) {
-        return false;
-    }
-
-    if (m_child_pid == 0) {
-        //cout << "FORKED: installPackages(): DoInstall" << endl;
-
-        // ensure that this process dies with its parent
-        prctl(PR_SET_PDEATHSIG, SIGKILL);
-
-        // close pipe we don't need
-        close(readFromChildFD[0]);
-
-        // Change the locale to not get libapt localization
-        setlocale(LC_ALL, "C.UTF-8");
-        g_setenv("LANG", "C.UTF-8", TRUE);
-        g_setenv("LANGUAGE", "C.UTF-8", TRUE);
-
-        // Debconf handling
-        const gchar *socket = pk_backend_job_get_frontend_socket(m_job);
-        if ((m_interactive) && (socket != NULL)) {
-            g_setenv("DEBIAN_FRONTEND", "passthrough", TRUE);
-            g_setenv("DEBCONF_PIPE", socket, TRUE);
-
-            // Set the LANGUAGE so debconf messages get localization
-            // NOTE: This will cause dpkg messages to be localized and APTcc's string matching
-            // to fail, so progress information may no longer be accurate in these cases.
-            setEnvLocaleFromJob();
-        } else {
-            // we don't have a socket set or are not interactive, let's fallback to noninteractive
-            g_setenv("DEBIAN_FRONTEND", "noninteractive", TRUE);
-        }
-
-        // apt will record this in its history.log
-        guint uid = pk_backend_job_get_uid(m_job);
-        if (uid > 0) {
-            gchar buf[16];
-            snprintf(buf, sizeof(buf), "%d", uid);
-            g_setenv("PACKAGEKIT_CALLER_UID", buf, TRUE);
-        }
-
-        PkRoleEnum role = pk_backend_job_get_role(m_job);
-        gchar *cmd = g_strdup_printf("packagekit role='%s'", pk_role_enum_to_string(role));
-        _config->Set("CommandLine::AsString", cmd);
-        g_free(cmd);
-
-        // Pass the write end of the pipe to the install function
-        res = PM->DoInstall();
-
-        // dump errors into cerr (pass it to the parent process)
-        _error->DumpErrors();
-
-        // finishes the child process, _exit is used to not
-        // close some parent file descriptors
-        _exit(res);
-    }
-
-    cout << "APTcc parent process running..." << endl;
-
-    // make it nonblocking, very important otherwise
-    // when the child finish we stay stuck.
-    fcntl(readFromChildFD[0], F_SETFL, O_NONBLOCK);
-    fcntl(pty_master, F_SETFL, O_NONBLOCK);
-
-    // init the timer
-    m_lastTermAction = time(NULL);
-    m_startCounting = false;
-
-    // process messages from child
-    int ret = 0;
-    char masterbuf[1024];
-    std::string errorLogTail = "";
-    bool errorEmitted = false;
-    bool childTerminated = false;
-    while (true) {
-        while (true) {
-            int bufLen = read(pty_master, masterbuf, sizeof(masterbuf));
-            if (bufLen <= 0)
-                break;
-            masterbuf[bufLen] = '\0';
-            errorLogTail.append(masterbuf);
-            if (errorLogTail.length() > 2048)
-                errorLogTail.erase(0, errorLogTail.length() - 2048);
-        }
-
-        // don't continue if the child terminated previously
-        if (childTerminated)
-            break;
-
-        // try to parse dpkg status
-        updateInterface(readFromChildFD[0], pty_master, &errorEmitted);
-
-        // Check if the child died
-        if (waitpid(m_child_pid, &ret, WNOHANG) != 0)
-            childTerminated = true; // one last round to read remaining output
-    }
-
-    close(readFromChildFD[0]);
-    close(readFromChildFD[1]);
-    close(pty_master);
-
-    cout << "APTcc parent process finished: " << ret << endl;
-
-    if (ret != 0 && !m_cancel && !errorEmitted) {
-        // If the child died with a non-zero exit code, and we didn't deliberately
-        // kill it in a cancel operation and we didn't already emit an error,
-        // we still need to find out what went wrong to present a message to the user.
-        // Let's see if we can find any kind of not overlay verbose information to display.
-
-        std::stringstream ss(errorLogTail);
-        std::string line;
-        std::string shortErrorLog = "";
-        while(std::getline(ss, line, '\n')) {
-            if (g_str_has_prefix (line.c_str(), "E:"))
-                shortErrorLog.append("\n" + line);
-        }
-
-        if (shortErrorLog.empty()) {
-            if (errorLogTail.length() > 1200)
-                errorLogTail.erase(0, errorLogTail.length() - 1200);
-            std::string logExcerpt = errorLogTail.substr(errorLogTail.find("\n") + 1, errorLogTail.length());
-            logExcerpt = logExcerpt.empty()? "No log generated. Check `/var/log/apt/term.log`!" : "\n" + logExcerpt;
-            pk_backend_job_error_code(m_job,
-                                      PK_ERROR_ENUM_TRANSACTION_ERROR,
-                                      "Error while running dpkg. Log excerpt: %s",
-                                       logExcerpt.c_str());
-        } else {
-            pk_backend_job_error_code(m_job,
-                                      PK_ERROR_ENUM_TRANSACTION_ERROR,
-                                      "Error while running the transaction: %s",
-                                      shortErrorLog.c_str());
-        }
-        return false;
-    }
+    PM->DoInstall(showProgress, &m_progress);
 
     return true;
 }
