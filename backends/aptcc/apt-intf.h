@@ -30,11 +30,13 @@
 #include <apt-pkg/depcache.h>
 #include <apt-pkg/acquire.h>
 #include <apt-pkg/fileutl.h>
+#include <apt-pkg/packagemanager.h>
 
 #include <pk-backend.h>
 
 #include "pkg-list.h"
 #include "apt-sourceslist.h"
+#include "apt-cache-file.h"
 
 #define REBOOT_REQUIRED      "/var/run/reboot-required"
 
@@ -189,6 +191,12 @@ public:
       */
     void emitUpdateDetails(const PkgList &pkgs);
 
+    static void showProgress(const char *nevra,
+                       const aptCallbackType what,
+                       const uint64_t amount,
+                       const uint64_t total,
+                       void *data);
+
     /**
       *  Download and install packages
       */
@@ -247,6 +255,7 @@ private:
     pid_t m_child_pid;
 
     FileFd m_fileFd;
+    OpPackageKitProgress m_progress;
 };
 
 #endif
