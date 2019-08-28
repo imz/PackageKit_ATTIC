@@ -31,10 +31,12 @@
 #include "apt-utils.h"
 #include "apt-messages.h"
 
-AptCacheFile::AptCacheFile(PkBackendJob *job, bool const withLock) :
+AptCacheFile::AptCacheFile(PkBackendJob *job, bool const withLock,
+                           OpPackageKitProgress *progress) :
     pkgCacheFile(withLock),
     m_packageRecords(0),
-    m_job(job)
+    m_job(job),
+    m_progress(progress)
 {
 }
 
@@ -51,32 +53,27 @@ AptCacheFile::~AptCacheFile()
 
 bool AptCacheFile::Open()
 {
-    OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::Open(progress);
+    return pkgCacheFile::Open(*m_progress);
 }
 
 bool AptCacheFile::BuildCaches()
 {
-    OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::BuildCaches(progress);
+    return pkgCacheFile::BuildCaches(*m_progress);
 }
 
 pkgCache* AptCacheFile::GetPkgCache()
 {
-    OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::GetPkgCache(progress);
+    return pkgCacheFile::GetPkgCache(*m_progress);
 }
 
 pkgPolicy* AptCacheFile::GetPolicy()
 {
-    OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::GetPolicy(progress);
+    return pkgCacheFile::GetPolicy(*m_progress);
 }
 
 pkgDepCache* AptCacheFile::GetDepCache()
 {
-    OpPackageKitProgress progress(m_job);
-    return pkgCacheFile::GetDepCache(progress);
+    return pkgCacheFile::GetDepCache(*m_progress);
 }
 
 bool AptCacheFile::CheckDeps(bool AllowBroken)
