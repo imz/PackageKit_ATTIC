@@ -29,11 +29,12 @@
 
 #include "pkg-list.h"
 
+class OpPackageKitProgress;
 class pkgProblemResolver;
 class AptCacheFile : public pkgCacheFile
 {
 public:
-    AptCacheFile(PkBackendJob *job, bool withLock);
+    AptCacheFile(PkBackendJob *job, bool withLock, OpPackageKitProgress *progress);
     ~AptCacheFile();
 
     /**
@@ -150,6 +151,7 @@ private:
 
     pkgRecords *m_packageRecords;
     PkBackendJob *m_job;
+    OpPackageKitProgress *m_progress;
 };
 
 /**
