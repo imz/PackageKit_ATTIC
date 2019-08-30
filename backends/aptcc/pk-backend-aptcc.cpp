@@ -348,12 +348,14 @@ static void backend_get_updates_thread(PkBackendJob *job, GVariant *params, gpoi
 
     PkgList updates;
     PkgList installs;
+    PkgList removals;
     PkgList downgrades;
     PkgList blocked;
-    updates = apt->getUpdates(blocked, downgrades, installs);
+    updates = apt->getUpdates(blocked, downgrades, installs, removals);
 
     apt->emitUpdates(updates, filters);
     apt->emitPackages(installs, filters, PK_INFO_ENUM_INSTALLING);
+    apt->emitPackages(removals, filters, PK_INFO_ENUM_REMOVING);
     apt->emitPackages(downgrades, filters, PK_INFO_ENUM_DOWNGRADING);
     apt->emitPackages(blocked, filters, PK_INFO_ENUM_BLOCKED);
 }
