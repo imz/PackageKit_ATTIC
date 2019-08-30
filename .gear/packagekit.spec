@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.1.12
-Release:   alt7
+Release:   alt8
 License:   GPLv2+ and LGPLv2+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -273,6 +273,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Fri Aug 30 2019 Aleksei Nikiforov <darktemplar@altlinux.org> 1.1.12-alt8
+- Fixed processing obsoletes during upgrades (Closes: #36342).
+
 * Wed Jun 26 2019 Ivan Zakharyaschev <imz@altlinux.org> 1.1.12-alt7
 - Fixed support for refreshCache action. (Thx Aleksei Nikiforov darktemplar@)
 
