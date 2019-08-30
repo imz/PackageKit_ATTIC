@@ -1234,7 +1234,7 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
     return output;
 }
 
-PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &installs, PkgList &removals)
+PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &installs, PkgList &removals, PkgList &obsoleted)
 {
     PkgList updates;
 
@@ -1278,12 +1278,35 @@ PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &inst
                 installs.push_back(ver);
             }
         } else if (state.Delete()) {
-            /*
-             * Obsoleted packages. They'd be displayed as 'removing' packages.
-             */
+            bool is_obsoleted = false;
+
+            /* Following code fragment should be similar to pkgDistUpgrade's one */
+            for (pkgCache::DepIterator D = pkg.RevDependsList(); not D.end(); ++D)
+            {
+                if ((D->Type == pkgCache::Dep::Obsoletes)
+                    && ((*m_cache)[D.ParentPkg()].CandidateVer != nullptr)
+                    && (*m_cache)[D.ParentPkg()].CandidateVerIter(*m_cache).Downloadable()
+                    && ((pkgCache::Version*)D.ParentVer() == (*m_cache)[D.ParentPkg()].CandidateVer)
+                    && (*m_cache)->VS().CheckDep(pkg.CurrentVer().VerStr(), D)
+                    && ((*m_cache)->GetPkgPriority(D.ParentPkg()) >= (*m_cache)->GetPkgPriority(pkg)))
+                {
+                    is_obsoleted = true;
+                    break;
+                }
+            }
+
             const pkgCache::VerIterator &ver = m_cache->findCandidateVer(pkg);
             if (!ver.end()) {
-                removals.push_back(ver);
+                if( is_obsoleted )
+                {
+                    /* Obsoleted packages */
+                    obsoleted.push_back(ver);
+                }
+                else
+                {
+                    /* Removed packages */
+                    removals.push_back(ver);
+                }
             }
         }
     }
