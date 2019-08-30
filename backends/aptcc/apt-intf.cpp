@@ -1239,7 +1239,7 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
     return output;
 }
 
-PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &installs)
+PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &installs, PkgList &removals)
 {
     PkgList updates;
 
@@ -1277,12 +1277,18 @@ PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &inst
         } else if (state.NewInstall()) {
             /*
              * Obsoleting packages.
-             * Obsoleted packages would not be displayed in 'get-updates' call,
-             * but would still be removed in 'update' call
              */
             const pkgCache::VerIterator &ver = m_cache->findCandidateVer(pkg);
             if (!ver.end()) {
                 installs.push_back(ver);
+            }
+        } else if (state.Delete()) {
+            /*
+             * Obsoleted packages. They'd be displayed as 'removing' packages.
+             */
+            const pkgCache::VerIterator &ver = m_cache->findCandidateVer(pkg);
+            if (!ver.end()) {
+                removals.push_back(ver);
             }
         }
     }

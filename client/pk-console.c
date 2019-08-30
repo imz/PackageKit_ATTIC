@@ -1130,7 +1130,7 @@ pk_console_update_system (PkConsoleCtx *ctx, GError **error)
 
 	/* do the async action */
 	sack = pk_results_get_package_sack (results);
-	package_ids = pk_package_sack_get_ids (sack);
+	package_ids = pk_package_sack_get_ids_without_removals (sack);
 	if (g_strv_length (package_ids) == 0) {
 		pk_progress_bar_end (ctx->progressbar);
 		/* TRANSLATORS: there are no updates, so nothing to do */

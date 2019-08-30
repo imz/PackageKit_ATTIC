@@ -106,6 +106,7 @@ typedef gboolean (*PkPackageSackFilterFunc)		(PkPackage		*package,
 /* managing the array */
 void		 pk_package_sack_clear			(PkPackageSack		*sack);
 gchar		**pk_package_sack_get_ids		(PkPackageSack		*sack);
+gchar		**pk_package_sack_get_ids_without_removals		(PkPackageSack		*sack);
 guint		 pk_package_sack_get_size		(PkPackageSack		*sack);
 GPtrArray	*pk_package_sack_get_array		(PkPackageSack		*sack);
 void		 pk_package_sack_sort			(PkPackageSack		*sack,
