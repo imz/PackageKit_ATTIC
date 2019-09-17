@@ -36,6 +36,10 @@
 #include <apt-pkg/version.h>
 #include <apt-pkg/rpmsystem.h>
 
+#ifdef WITH_LUA
+#include <apt-pkg/luaiface.h>
+#endif
+
 #include <appstream.h>
 
 #include <boost/scope_exit.hpp>
@@ -2074,6 +2078,12 @@ bool AptIntf::installPackages(PkBitfield flags)
     if (m_cache->isRemovingEssentialPackages()) {
         return false;
     }
+
+#ifdef WITH_LUA
+    _lua->SetDepCache(*m_cache);
+    _lua->RunScripts("Scripts::PackageKit::RunTransaction::Pre");
+    _lua->ResetCaches();
+#endif
 
     // Sanity check
     if ((*m_cache)->BrokenCount() != 0) {
