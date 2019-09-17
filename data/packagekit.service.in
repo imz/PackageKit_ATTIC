@@ -11,7 +11,7 @@ ConditionPathExists=!/var/lib/PackageKit/upgrade_lock
 Type=dbus
 BusName=org.freedesktop.PackageKit
 User=@PACKAGEKIT_USER@
-ExecStart=@libexecdir@/packagekitd --verbose
+ExecStart=@libexecdir@/packagekitd
 # don't kill service immediately,
 # instead request it to quit after finishing current request
 ExecStop=@bindir@/pkcon quit
