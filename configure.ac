@@ -371,6 +371,19 @@ AM_CONDITIONAL(BACKEND_TYPE_YUM, [test x$enable_yum = xyes])
 AM_CONDITIONAL(BACKEND_TYPE_ZYPP, [test x$enable_zypp = xyes])
 AM_CONDITIONAL(BACKEND_TYPE_NIX, [test x$enable_nix = xyes])
 
+AC_MSG_CHECKING(for --enable-scripts)
+AC_ARG_ENABLE([scripts],
+	      AC_HELP_STRING(--enable-scripts, enable the extension system for aptcc),
+	      [enable_scripts="$enableval"],[enable_scripts="no"])
+if test "$enable_scripts" != "no"; then
+  AC_MSG_RESULT(no)
+  AC_DEFINE(WITH_LUA, 1,
+	    [Define if you want to enable the extension system for aptcc.])
+else
+  AC_MSG_RESULT(yes)
+fi
+AM_CONDITIONAL(WITH_LUA, test "$enable_scripts" != "no")
+
 dnl ---------------------------------------------------------------------------
 dnl - Are we specifying a different dbus root ?
 dnl ---------------------------------------------------------------------------
