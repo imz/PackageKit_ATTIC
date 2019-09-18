@@ -158,8 +158,6 @@ pk_package_sack_get_ids_without_removals (PkPackageSack *sack)
 		}
 	}
 
-	g_return_val_if_fail (len != 0, NULL);
-
 	package_ids = g_new0 (gchar *, len + 1);
 	for (i = 0; (i < array->len) && (cur_len < len); ++i) {
 		package = g_ptr_array_index (array, i);
