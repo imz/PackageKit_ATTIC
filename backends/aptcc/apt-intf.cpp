@@ -826,10 +826,23 @@ void AptIntf::emitUpdateDetail(const pkgCache::VerIterator &candver)
     bugzilla_urls = getBugzillaUrls(changelog);
     cve_urls = getCVEUrls(changelog);
 
+    GPtrArray *obsoletes = g_ptr_array_new();
+
+    for (auto deps = candver.DependsList(); not deps.end(); ++deps)
+    {
+        if (deps->Type == pkgCache::Dep::Obsoletes)
+        {
+            g_ptr_array_add(obsoletes, (void*) deps.TargetPkg().Name());
+        }
+    }
+
+    // NULL terminate
+    g_ptr_array_add(obsoletes, NULL);
+
     pk_backend_job_update_detail(m_job,
                                  package_id,
                                  updates,//const gchar *updates
-                                 NULL,//const gchar *obsoletes
+                                 (gchar **) obsoletes->pdata,//const gchar *obsoletes
                                  NULL,//const gchar *vendor_url
                                  (gchar **) bugzilla_urls->pdata,// gchar **bugzilla_urls
                                  (gchar **) cve_urls->pdata,// gchar **cve_urls
@@ -843,6 +856,7 @@ void AptIntf::emitUpdateDetail(const pkgCache::VerIterator &candver)
 
     g_free(package_id);
     g_strfreev(updates);
+    g_ptr_array_unref(obsoletes);
     g_ptr_array_unref(bugzilla_urls);
     g_ptr_array_unref(cve_urls);
 }
