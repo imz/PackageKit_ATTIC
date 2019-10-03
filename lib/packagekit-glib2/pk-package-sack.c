@@ -128,51 +128,6 @@ pk_package_sack_get_ids (PkPackageSack *sack)
 }
 
 /**
- * pk_package_sack_get_ids_without_removals:
- * @sack: a valid #PkPackageSack instance
- *
- * Returns all the Package IDs in the sack, except for removals and obsoletes
- *
- * Return value: (transfer full): the number of packages in the sack, free with g_strfreev()
- **/
-gchar **
-pk_package_sack_get_ids_without_removals (PkPackageSack *sack)
-{
-	gchar **package_ids;
-	GPtrArray *array;
-	guint i, len = 0, cur_len = 0;
-	PkPackage *package;
-	PkInfoEnum package_enum;
-
-	g_return_val_if_fail (PK_IS_PACKAGE_SACK (sack), NULL);
-
-	array = sack->priv->array;
-
-	for (i = 0; i < array->len; ++i) {
-		package = g_ptr_array_index (array, i);
-		package_enum = pk_package_get_info(package);
-		if ((package_enum != PK_INFO_ENUM_OBSOLETING)
-			&& (package_enum != PK_INFO_ENUM_REMOVING))
-		{
-			++len;
-		}
-	}
-
-	package_ids = g_new0 (gchar *, len + 1);
-	for (i = 0; (i < array->len) && (cur_len < len); ++i) {
-		package = g_ptr_array_index (array, i);
-		package_enum = pk_package_get_info(package);
-		if ((package_enum != PK_INFO_ENUM_OBSOLETING)
-			&& (package_enum != PK_INFO_ENUM_REMOVING))
-		{
-			package_ids[cur_len++] = g_strdup (pk_package_get_id (package));
-		}
-	}
-
-	return package_ids;
-}
-
-/**
  * pk_package_sack_get_array:
  * @sack: a valid #PkPackageSack instance
  *
