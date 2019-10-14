@@ -444,10 +444,25 @@ main (int argc, char *argv[])
 	g_autoptr(PkProgressBar) progressbar = NULL;
 	g_autoptr(PkTask) task = NULL;
 
+	gboolean do_action = FALSE;
+	GOptionContext *context;
+
+	const GOptionEntry options[] = {
+		{ "shutdown", '\0', 0, G_OPTION_ARG_NONE, &do_action,
+		  _("Actually reboot or shutdown"), NULL },
+		{ NULL }
+	};
+
 	setlocale (LC_ALL, "");
 	bindtextdomain (GETTEXT_PACKAGE, PACKAGE_LOCALE_DIR);
 	bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
 	textdomain (GETTEXT_PACKAGE);
+
+	context = g_option_context_new (_("PackageKit offline update service"));
+	g_option_context_add_main_entries (context, options, NULL);
+	g_option_context_add_group (context, pk_debug_get_option_group ());
+	g_option_context_parse (context, &argc, &argv, NULL);
+	g_option_context_free (context);
 
 	/* ensure root user */
 	if (getuid () != 0 || geteuid () != 0) {
@@ -455,6 +470,21 @@ main (int argc, char *argv[])
 		g_print ("This program can only be used using root\n");
 		sd_journal_print (LOG_WARNING, "not called with the root user");
 		goto out;
+	}
+
+	if (do_action) {
+		retval = EXIT_SUCCESS;
+		/* get the action, and then delete the file */
+		action = pk_offline_update_get_action ();
+		g_unlink (PK_OFFLINE_ACTION_FILENAME);
+
+		/* we have to manually either restart or shutdown */
+		if (action == PK_OFFLINE_ACTION_REBOOT)
+			retval = pk_offline_update_reboot ();
+		else if (action == PK_OFFLINE_ACTION_POWER_OFF)
+			retval = pk_offline_update_power_off ();
+
+		return retval;
 	}
 
 	/* verify this is pointing to our cache */
@@ -472,10 +502,6 @@ main (int argc, char *argv[])
 		retval = EXIT_SUCCESS;
 		goto out;
 	}
-
-	/* get the action, and then delete the file */
-	action = pk_offline_update_get_action ();
-	g_unlink (PK_OFFLINE_ACTION_FILENAME);
 
 	/* always do this first to avoid a loop if this tool segfaults */
 	g_unlink (PK_OFFLINE_TRIGGER_FILENAME);
@@ -539,12 +565,6 @@ out:
 		g_timeout_add_seconds (10, pk_offline_update_loop_quit_cb, loop);
 		g_main_loop_run (loop);
 	}
-
-	/* we have to manually either restart or shutdown */
-	if (action == PK_OFFLINE_ACTION_REBOOT)
-		retval = pk_offline_update_reboot ();
-	else if (action == PK_OFFLINE_ACTION_POWER_OFF)
-		retval = pk_offline_update_power_off ();
 
 	/* We must return success if we queued the shutdown or reboot
 	 * request, so the failure action specified by the unit is not
