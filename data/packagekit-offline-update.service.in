@@ -11,6 +11,11 @@ ConditionPathExists=!/var/lib/PackageKit/upgrade_lock
 
 [Service]
 Type=oneshot
+ExecStartPre=/bin/touch /var/lib/PackageKit/disable-rpm-triggers
 ExecStart=@libexecdir@/pk-offline-update
+ExecStartPost=-/bin/sh @libexecdir@/pk-invoke-filetriggers.sh
+ExecStartPost=-/bin/rm /var/lib/PackageKit/disable-rpm-triggers
+ExecStartPost=@libexecdir@/pk-offline-update --shutdown
+ExecStopPost=-/bin/rm /var/lib/PackageKit/disable-rpm-triggers
 
 FailureAction=reboot
