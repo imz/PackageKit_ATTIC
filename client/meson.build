@@ -40,6 +40,17 @@ if get_option('offline_update')
       '-DPACKAGE_LOCALE_DIR="@0@"'.format(package_locale_dir),
     ]
   )
+
+  offline_update_data = configuration_data()
+  offline_update_data.set('libexecdir', join_paths(get_option('prefix'), get_option('libexecdir')))
+  offline_update_data.set('cachedir', join_paths(get_option('prefix'), get_option('localstatedir'), 'cache'))
+  configure_file(
+    input: 'pk-invoke-filetriggers.sh.in',
+    output: 'pk-invoke-filetriggers.sh',
+    configuration: offline_update_data,
+    install: true,
+    install_dir: get_option('libexecdir'),
+  )
 endif
 
 if get_option('man_pages')
