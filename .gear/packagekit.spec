@@ -188,7 +188,14 @@ if sd_booted && "$SYSTEMCTL" --version >/dev/null 2>&1; then
 fi
 
 %preun
-%preun_service %name ||:
+SYSTEMCTL=systemctl
+
+[ "$RPM_INSTALL_ARG1" -eq 0 ] 2>/dev/null || exit 0
+
+if sd_booted && "$SYSTEMCTL" --version >/dev/null 2>&1; then
+        "$SYSTEMCTL" --no-reload -q disable "$1.service"
+        %_bindir/pkcon quit ||:
+fi
 
 %triggerin -- librpm7
 # only on update of librpm7
