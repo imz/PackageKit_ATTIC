@@ -13,6 +13,3 @@ Type=dbus
 BusName=org.freedesktop.PackageKit
 User=@PACKAGEKIT_USER@
 ExecStart=@libexecdir@/packagekitd
-# don't kill service immediately,
-# instead request it to quit after finishing current request
-ExecStop=@bindir@/pkcon quit
