@@ -373,8 +373,7 @@ pk_offline_get_action (GError **error)
 	g_return_val_if_fail (error == NULL || *error == NULL, PK_OFFLINE_ACTION_UNKNOWN);
 
 	/* is the trigger set? */
-	if (!g_file_test (PK_OFFLINE_TRIGGER_FILENAME, G_FILE_TEST_EXISTS) ||
-	    !g_file_test (PK_OFFLINE_ACTION_FILENAME, G_FILE_TEST_EXISTS))
+	if (!g_file_test (PK_OFFLINE_ACTION_FILENAME, G_FILE_TEST_EXISTS))
 		return PK_OFFLINE_ACTION_UNSET;
 
 	/* read data file */
