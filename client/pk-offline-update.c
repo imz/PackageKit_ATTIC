@@ -473,7 +473,8 @@ main (int argc, char *argv[])
 	}
 
 	if (do_action) {
-		retval = EXIT_SUCCESS;
+		/* if action is undefined, return error */
+		retval = EXIT_FAILURE;
 		/* get the action, and then delete the file */
 		action = pk_offline_update_get_action ();
 		g_unlink (PK_OFFLINE_ACTION_FILENAME);
