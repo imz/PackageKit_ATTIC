@@ -1,0 +1,17 @@
+object 999835fcf34916025c25fbec120d287a696cbd71
+type commit
+tag PACKAGEKIT_1_1_13
+tagger Richard Hughes <richard@hughsie.com> 1578494049 +0000
+
+Release 1.1.13
+-----BEGIN PGP SIGNATURE-----
+
+iQFIBAABCAAyFiEEFj61ARkiXbPfj0nqF6y6jfqXDhcFAl4V6GEUHHJpY2hhcmRA
+aHVnaHNpZS5jb20ACgkQF6y6jfqXDhdExwf+LqT4xSGAR0mALhF6tnr5b7ADGuC7
+btlegDxutlNr+HEVQAgbiZJhu9Jr5f2M1M6Z9fOMzmaJld/TtamKJY0/TaH5dWvo
+2n5YqmCsYyK5gO+cIM/i9gkf1Z7YPh4OmQyFNLIJ62SD94uBdWyKCtlRI3dLZE7i
++cXtT0EQrGVwvp//MCa0zvPyETMU6tGobHLajvMZQrz2E+uIswJmrpTgA2GUJSmS
++ERztpIyKjt5LMAz5kRAwjYBDCEHPOaj35cc+8eki4b6hNmVzSYf9VhKyKrXaFDj
+le4WiCDQGgHj3ab7PAL/M+zLhlEanWwmSJCmNulLmcfa3C3fXjjcIQqxUw==
+=2mym
+-----END PGP SIGNATURE-----
