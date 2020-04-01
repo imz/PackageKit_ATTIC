@@ -27,7 +27,6 @@
 #include <config.h>
 #include <pk-backend.h>
 
-#include <apt-pkg/aptconfiguration.h>
 #include <apt-pkg/error.h>
 #include <apt-pkg/fileutl.h>
 #include <apt-pkg/init.h>
