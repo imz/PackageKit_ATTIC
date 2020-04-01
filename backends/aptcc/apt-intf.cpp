@@ -2223,7 +2223,7 @@ bool AptIntf::installPackages(PkBitfield flags)
 
     // we could try to see if this is the case
     setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-    _system->UnLockInner();
+    _system->UnLock();
 
     pkgPackageManager::OrderResult res;
 
@@ -2313,7 +2313,6 @@ bool AptIntf::installPackages(PkBitfield flags)
     close(readFromChildFD[0]);
     close(readFromChildFD[1]);
     close(pty_master);
-    _system->LockInner();
 
     cout << "Parent finished..." << endl;
     return true;
