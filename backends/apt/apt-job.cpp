@@ -2347,7 +2347,7 @@ bool AptJob::installPackages(PkBitfield flags)
 
     // we could try to see if this is the case
     g_setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", TRUE);
-    _system->UnLockInner();
+    _system->UnLock();
 
     pkgPackageManager::OrderResult res;
     res = PM->DoInstallPreFork();
@@ -2468,7 +2468,6 @@ bool AptJob::installPackages(PkBitfield flags)
     close(readFromChildFD[0]);
     close(readFromChildFD[1]);
     close(pty_master);
-    _system->LockInner();
 
     cout << "apt-backend parent process finished: " << ret << endl;
 
