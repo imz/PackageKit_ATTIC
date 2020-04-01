@@ -100,9 +100,15 @@ using zypp::filesystem::PathInfo;
 typedef enum {
         INSTALL,
         REMOVE,
-        UPDATE
+        UPDATE,
+        UPGRADE_SYSTEM
 } PerformType;
 
+typedef enum {
+        NEWER_VERSION,
+        OLDER_VERSION,
+        EQUAL_VERSION
+} VersionRelation;
 
 class ZyppJob {
  public:
@@ -1113,6 +1119,19 @@ zypp_filter_solvable (PkBitfield filters, const sat::Solvable &item)
 			return TRUE;
 		if (i == PK_FILTER_ENUM_NOT_DOWNLOADED && zypp_package_is_cached (item))
 			return TRUE;
+		if (i == PK_FILTER_ENUM_NEWEST) {
+			if (item.isSystem ()) {
+				return FALSE;
+			}
+			else {
+				ui::Selectable::Ptr sel = ui::Selectable::get (item);
+				const PoolItem & newest (sel->highestAvailableVersionObj ());
+
+				if (newest && zypp::Edition::compare (newest.edition (), item.edition ()))
+					return TRUE;
+				return FALSE;
+			}
+		}
 
 		// FIXME: add more enums - cf. libzif logic and pk-enum.h
 		// PK_FILTER_ENUM_SUPPORTED,
@@ -1179,7 +1198,25 @@ zypp_emit_filtered_packages_in_list (PkBackendJob *job, PkBitfield filters, cons
 	}
 }
 
+static gboolean
+is_tumbleweed (void)
+{
+	gboolean ret = FALSE;
+	static const Capability cap( "product-update()", Rel::EQ, "dup" );
+	ui::Selectable::Ptr sel (ui::Selectable::get (ResKind::package, "openSUSE-release"));
+	if (sel) {
+		if (!sel->installedEmpty ()) {
+			for_ (it, sel->installedBegin (), sel->installedEnd ()) {
+				if (it->satSolvable ().provides ().matches (cap)) {
+					ret = TRUE;
+					break;
+				}
+			}
+		}
+	}
 
+	return ret;
+}
 
 /**
  * Returns a set of all packages the could be updated
@@ -1188,13 +1225,21 @@ zypp_emit_filtered_packages_in_list (PkBackendJob *job, PkBitfield filters, cons
 static void
 zypp_get_package_updates (string repo, set<PoolItem> &pks)
 {
+	ZYpp::Ptr zypp = getZYpp ();
+	zypp::Resolver_Ptr resolver = zypp->resolver ();
 	ResPool pool = ResPool::instance ();
 
 	ResObject::Kind kind = ResTraits<Package>::kind;
 	ResPool::byKind_iterator it = pool.byKindBegin (kind);
 	ResPool::byKind_iterator e = pool.byKindEnd (kind);
 
-	getZYpp()->resolver()->doUpdate();
+	if (is_tumbleweed ()) {
+		resolver->dupSetAllowVendorChange (ZConfig::instance ().solver_dupAllowVendorChange ());
+		resolver->doUpgrade ();
+	} else {
+		resolver->doUpdate ();
+	}
+
 	for (; it != e; ++it)
 		if (it->status().isToBeInstalled()) {
 			ui::Selectable::constPtr s =
@@ -1202,6 +1247,10 @@ zypp_get_package_updates (string repo, set<PoolItem> &pks)
 			if (s->hasInstalledObj())
 				pks.insert(*it);
 		}
+
+	if (is_tumbleweed ()) {
+		resolver->setUpgradeMode (FALSE);
+	}
 }
 
 /**
@@ -1447,6 +1496,7 @@ zypp_perform_execution (PkBackendJob *job, ZYpp::Ptr zypp, PerformType type, gbo
 			_dl_progress = 0;
 			break;
 		case UPDATE:
+		case UPGRADE_SYSTEM:
 			pk_backend_job_set_status (job, PK_STATUS_ENUM_UPDATE);
 			pk_backend_job_set_percentage(job, 0);
 			_dl_progress = 0;
@@ -1472,6 +1522,9 @@ zypp_perform_execution (PkBackendJob *job, ZYpp::Ptr zypp, PerformType type, gbo
 					// for updates we only care for updates
 					if (it->status ().isToBeUninstalledDueToUpgrade ())
 						continue;
+					break;
+				case UPGRADE_SYSTEM:
+				default:
 					break;
 				}
 				
@@ -2657,7 +2710,7 @@ backend_install_packages_thread (PkBackendJob *job, GVariant *params, gpointer u
 
 	PkBitfield transaction_flags = 0;
 	gchar **package_ids;
-	
+
 	g_variant_get(params, "(t^a&s)",
 		      &transaction_flags,
 		      &package_ids);
@@ -2675,18 +2728,24 @@ backend_install_packages_thread (PkBackendJob *job, GVariant *params, gpointer u
 
 	pk_backend_job_set_status (job, PK_STATUS_ENUM_QUERY);
 	pk_backend_job_set_percentage (job, 0);
-	
+
 	try
 	{
 		ResPool pool = zypp_build_pool (zypp, TRUE);
 		PoolStatusSaver saver;
 		pk_backend_job_set_percentage (job, 10);
 		vector<PoolItem> items;
-
+		VersionRelation relations[g_strv_length (package_ids)];
 		guint to_install = 0;
+
 		for (guint i = 0; package_ids[i]; i++) {
 			MIL << package_ids[i] << endl;
+			g_auto(GStrv) split = NULL;
+			gint ret;
 			sat::Solvable solvable = zypp_get_package_by_id (package_ids[i]);
+			sat::Solvable *inst_pkg = NULL;
+			sat::Solvable *latest_pkg = NULL;
+			vector<sat::Solvable> installed;
 
 			if (zypp_is_no_solvable(solvable)) {
 				// Previously stored package_id no longer matches any solvable.
@@ -2694,15 +2753,75 @@ backend_install_packages_thread (PkBackendJob *job, GVariant *params, gpointer u
 							     "couldn't find package");
 				return;
 			}
-			
+
+			split = pk_package_id_split (package_ids[i]);
+			ui::Selectable::Ptr sel (ui::Selectable::get (ResKind::package,
+								      split[PK_PACKAGE_ID_NAME]));
+			if (sel && !sel->installedEmpty ()) {
+				for_ (it, sel->installedBegin (), sel->installedEnd ()) {
+					if (it->satSolvable ().arch ().compare (Arch (split[PK_PACKAGE_ID_ARCH])) == 0) {
+						installed.push_back ((it->satSolvable ()));
+					}
+				}
+			}
+
+			for (guint j = 0; j < installed.size (); j++) {
+				inst_pkg = &installed.at (j);
+				ret = inst_pkg->edition ().compare (Edition (split[PK_PACKAGE_ID_VERSION]));
+
+				if (relations[i] == 0 && ret < 0) {
+					relations[i] = NEWER_VERSION;
+				} else if (relations[i] != EQUAL_VERSION && ret > 0) {
+					relations[i] = OLDER_VERSION;
+					if (!latest_pkg ||
+					    latest_pkg->edition ().compare (inst_pkg->edition ()) < 0) {
+						latest_pkg = inst_pkg;
+					}
+				} else if (ret == 0) {
+					relations[i] = EQUAL_VERSION;
+					break;
+				}
+			}
+
+			if (relations[i] == EQUAL_VERSION &&
+			    !pk_bitfield_contain (transaction_flags,
+						  PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL)) {
+				g_autofree gchar *printable_tmp = pk_package_id_to_printable (package_ids[i]);
+				pk_backend_job_error_code (job,
+							   PK_ERROR_ENUM_PACKAGE_ALREADY_INSTALLED,
+							   "%s is already installed",
+							   printable_tmp);
+				return;
+			}
+
+			if (relations[i] == OLDER_VERSION &&
+			    !pk_bitfield_contain (transaction_flags,
+						  PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE)) {
+				pk_backend_job_error_code (job,
+							   PK_ERROR_ENUM_PACKAGE_ALREADY_INSTALLED,
+							   "higher version \"%s\" of package %s.%s is already installed",
+							   latest_pkg->edition ().version ().c_str (),
+							   split[PK_PACKAGE_ID_NAME],
+							   split[PK_PACKAGE_ID_ARCH]);
+				return;
+			}
+
+			if (relations[i] && relations[i] != EQUAL_VERSION &&
+			    pk_bitfield_contain (transaction_flags,
+						 PK_TRANSACTION_FLAG_ENUM_JUST_REINSTALL)) {
+				pk_backend_job_error_code (job,
+							   PK_ERROR_ENUM_NOT_AUTHORIZED,
+							   "missing authorization to update or downgrade software");
+				return;
+			}
+
 			to_install++;
 			PoolItem item(solvable);
 			// set status to ToBeInstalled
 			item.status ().setToBeInstalled (ResStatus::USER);
 			items.push_back (item);
-		
 		}
-			
+
 		pk_backend_job_set_percentage (job, 40);
 
 		if (!to_install) {
@@ -2895,6 +3014,7 @@ backend_resolve_thread (PkBackendJob *job, GVariant *params, gpointer user_data)
 		zypp_get_packages_by_name (search[i], ResKind::pattern, v2);
 		v.insert (v.end (), v2.begin (), v2.end ());
 
+		sat::Solvable installed;
 		sat::Solvable newest;
 		vector<sat::Solvable> pkgs;
 
@@ -2906,7 +3026,11 @@ backend_resolve_thread (PkBackendJob *job, GVariant *params, gpointer user_data)
 			if (zypp_filter_solvable (_filters, *it) ||
 			    zypp_is_no_solvable(*it))
 				continue;
-			
+
+			if (it->isSystem ()) {
+				installed = *it;
+			}
+
 			if (zypp_is_no_solvable(newest)) {
 				newest = *it;
 			} else if (it->edition() > newest.edition() || Arch::compare(it->arch(), newest.arch()) > 0) {
@@ -2915,19 +3039,26 @@ backend_resolve_thread (PkBackendJob *job, GVariant *params, gpointer user_data)
 			MIL << "emit " << *it << endl;
 			pkgs.push_back (*it);
 		}
-		
-		if (!zypp_is_no_solvable(newest)) {
-			
-			/* 'newest' filter support */
-			if (pk_bitfield_contain (_filters, PK_FILTER_ENUM_NEWEST)) {
-				pkgs.clear();
-				MIL << "emit just newest " << newest << endl;
+
+		/* The newest filter processes installed and available package
+		 * lists separately. */
+		if (pk_bitfield_contain (_filters, PK_FILTER_ENUM_NEWEST)) {
+			pkgs.clear ();
+
+			if (!zypp_is_no_solvable (installed)) {
+				MIL << "emit installed " << installed << endl;
+				pkgs.push_back (installed);
+			}
+			if (!zypp_is_no_solvable (newest)) {
+				MIL << "emit newest " << newest << endl;
 				pkgs.push_back (newest);
-			} else if (pk_bitfield_contain (_filters, PK_FILTER_ENUM_NOT_NEWEST)) {
+			}
+		} else if (pk_bitfield_contain (_filters, PK_FILTER_ENUM_NOT_NEWEST)) {
+			if (!zypp_is_no_solvable (newest) && newest != installed) {
 				pkgs.erase (find (pkgs.begin (), pkgs.end(), newest));
 			}
 		}
-		
+
 		zypp_emit_filtered_packages_in_list (job, _filters, pkgs);
 	}
 }
@@ -2973,7 +3104,7 @@ backend_find_packages_thread (PkBackendJob *job, GVariant *params, gpointer user
 
 	PoolQuery q;
 	q.addString( search ); // may be called multiple times (OR'ed)
-	q.setCaseSensitive( true );
+	q.setCaseSensitive( false ); // [<>] We want to be case insensitive for the name and description searches...
 	q.setMatchSubstring();
 
 	switch (role) {
@@ -2996,6 +3127,8 @@ backend_find_packages_thread (PkBackendJob *job, GVariant *params, gpointer user
 		// did not search in srcpackages.
 		break;
 	case PK_ROLE_ENUM_SEARCH_FILE: {
+		q.setCaseSensitive( true ); // [<>] But we probably want case sensitive search for the file searches.
+
 		zypp_build_pool (zypp, TRUE);
 		q.addKind( ResKind::package );
 		q.addAttribute( sat::SolvAttr::name );
@@ -3198,7 +3331,7 @@ backend_get_files_thread (PkBackendJob *job, GVariant *params, gpointer user_dat
 	for (uint i = 0; package_ids[i]; i++) {
 		pk_backend_job_set_status (job, PK_STATUS_ENUM_QUERY);
 		sat::Solvable solvable = zypp_get_package_by_id (package_ids[i]);
-		
+
 		if (zypp_is_no_solvable(solvable)) {
 			zypp_backend_finished_error (
 				job, PK_ERROR_ENUM_PACKAGE_NOT_FOUND,
@@ -3206,15 +3339,18 @@ backend_get_files_thread (PkBackendJob *job, GVariant *params, gpointer user_dat
 			return;
 		}
 
-		string temp;
+		g_auto(GStrv) strv = NULL;
+		g_autoptr(GPtrArray) pkg_files = NULL;
+
+		pkg_files = g_ptr_array_new ();
+
 		if (solvable.isSystem ()){
 			try {
 				target::rpm::RpmHeader::constPtr rpmHeader = zypp_get_rpmHeader (solvable.name (), solvable.edition ());
 				list<string> files = rpmHeader->tag_filenames ();
 
 				for (list<string>::iterator it = files.begin (); it != files.end (); ++it) {
-					temp.append (*it);
-					temp.append (";");
+					g_ptr_array_add (pkg_files, g_strdup (it->c_str ()));
 				}
 
 			} catch (const target::rpm::RpmException &ex) {
@@ -3223,12 +3359,14 @@ backend_get_files_thread (PkBackendJob *job, GVariant *params, gpointer user_dat
 				return;
 			}
 		} else {
-			temp = "Only available for installed packages";
+			g_ptr_array_add (pkg_files,
+					 g_strdup ("Only available for installed packages"));
 		}
 
-		const gchar *to_strv[] = { NULL, NULL };
-		to_strv[0] = temp.c_str ();
-		pk_backend_job_files (job, package_ids[i], (gchar **) to_strv);	// file_list
+		/* Convert to GStrv. */
+		g_ptr_array_add (pkg_files, NULL);
+		strv = g_strdupv ((gchar **) pkg_files->pdata);
+		pk_backend_job_files (job, package_ids[i], strv);
 	}
 }
 
@@ -3287,13 +3425,21 @@ backend_update_packages_thread (PkBackendJob *job, GVariant *params, gpointer us
 	g_variant_get(params, "(t^a&s)",
 		      &transaction_flags,
 		      &package_ids);
-	
+
 	ZyppJob zjob(job);
 	ZYpp::Ptr zypp = zjob.get_zypp();
 
 	if (zypp == NULL){
 		return;
 	}
+
+	if (is_tumbleweed ()) {
+		zypp_backend_finished_error (job,
+					     PK_ERROR_ENUM_NOT_SUPPORTED,
+					     "This product requires to be updated by calling 'pkcon upgrade-system'");
+		return;
+	}
+
 	ResPool pool = zypp_build_pool (zypp, TRUE);
 	PkRestartEnum restart = PK_RESTART_ENUM_NONE;
 
@@ -3310,7 +3456,7 @@ backend_update_packages_thread (PkBackendJob *job, GVariant *params, gpointer us
 		}
 
 		ui::Selectable::Ptr sel( ui::Selectable::get( solvable ));
-		
+
 		PoolItem item(solvable);
 		// patches are special - they are not installed and can't have update candidates
 		if (sel->kind() != ResKind::patch) {
@@ -3336,6 +3482,12 @@ backend_update_packages_thread (PkBackendJob *job, GVariant *params, gpointer us
 	}
 
 	zypp_perform_execution (job, zypp, UPDATE, FALSE, transaction_flags);
+
+	/* Don't reset upgrade mode if we're simulating the changes. Only reset
+	 * it after the real actions has been done. */
+	if (!pk_bitfield_contain (transaction_flags, PK_TRANSACTION_FLAG_ENUM_SIMULATE)) {
+		zypp->resolver()->setUpgradeMode(FALSE);
+	}
 }
 
 /**
@@ -3345,6 +3497,61 @@ void
 pk_backend_update_packages (PkBackend *backend, PkBackendJob *job, PkBitfield transaction_flags, gchar **package_ids)
 {
 	pk_backend_job_thread_create (job, backend_update_packages_thread, NULL, NULL);
+}
+
+static void
+backend_upgrade_system_thread (PkBackendJob *job,
+			       GVariant *params,
+			       gpointer user_data)
+{
+	PkBitfield transaction_flags = 0;
+	ZyppJob zjob (job);
+	set<PoolItem> candidates;
+
+	g_variant_get (params, "(t&su)",
+		       &transaction_flags,
+		       NULL,
+		       NULL);
+
+	ZYpp::Ptr zypp = zjob.get_zypp ();
+	if (zypp == NULL) {
+		return;
+	}
+
+	/* refresh the repos before checking for updates. */
+	if (!zypp_refresh_cache (job, zypp, FALSE)) {
+		return;
+	}
+	zypp_build_pool (zypp, TRUE);
+	zypp_get_updates (job, zypp, candidates);
+	if (candidates.empty ()) {
+		pk_backend_job_error_code (job, PK_ERROR_ENUM_NO_DISTRO_UPGRADE_DATA,
+					   "No Distribution Upgrade Available.");
+
+		return;
+	}
+
+	zypp->resolver ()->dupSetAllowVendorChange (ZConfig::instance ().solver_dupAllowVendorChange ());
+	zypp->resolver ()->doUpgrade ();
+
+	PoolStatusSaver saver;
+
+	zypp_perform_execution (job, zypp, UPGRADE_SYSTEM, FALSE, transaction_flags);
+
+	zypp->resolver ()->setUpgradeMode (FALSE);
+}
+
+/**
+  * pk_backend_upgrade_system
+  */
+void
+pk_backend_upgrade_system (PkBackend *backend,
+			   PkBackendJob *job,
+			   PkBitfield transaction_flags,
+			   const gchar *distro_id,
+			   PkUpgradeKindEnum upgrade_kind)
+{
+   pk_backend_job_thread_create (job, backend_upgrade_system_thread, NULL, NULL);
 }
 
 static void

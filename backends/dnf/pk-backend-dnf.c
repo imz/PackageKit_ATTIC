@@ -156,7 +156,6 @@ pk_backend_setup_dnf_context (DnfContext *context, GKeyFile *conf, const gchar *
 	dnf_context_set_repo_dir (context, repo_dir);
 	lock_dir = g_build_filename (destdir, "/var/run", NULL);
 	dnf_context_set_lock_dir (context, lock_dir);
-	dnf_context_set_release_ver (context, release_ver);
 	dnf_context_set_rpm_verbosity (context, "info");
 
 	/* use this initial data if repos are not present */
@@ -565,13 +564,6 @@ dnf_utils_add_remote (PkBackendJob *job,
 	                          error);
 	if (!ret)
 		return FALSE;
-
-	/* update the AppStream copies in /var */
-	for (guint i = 0; i < repos->len; i++) {
-		DnfRepo *repo = g_ptr_array_index (repos, i);
-		if (!dnf_utils_refresh_repo_appstream (repo, error))
-			return FALSE;
-	}
 
 	/* done */
 	if (!dnf_state_done (state, error))
@@ -1568,6 +1560,7 @@ pk_backend_refresh_cache_thread (PkBackendJob *job,
 				 gpointer user_data)
 {
 	PkBackendDnfJobData *job_data = pk_backend_job_get_user_data (job);
+	PkBackend *backend = pk_backend_job_get_backend (job);
 	DnfRepo *repo;
 	DnfState *state_local;
 	DnfState *state_loop;
@@ -1698,6 +1691,9 @@ pk_backend_refresh_cache_thread (PkBackendJob *job,
 		pk_backend_job_error_code (job, error->code, "%s", error->message);
 		return;
 	}
+
+	/* invalidate the sack cache after downloading new metadata */
+	pk_backend_sack_cache_invalidate (backend, "downloaded new metadata");
 
 	/* regenerate the libsolv metadata */
 	state_local = dnf_state_get_child (job_data->state);
@@ -3397,6 +3393,7 @@ pk_backend_upgrade_system_thread (PkBackendJob *job, GVariant *params, gpointer 
 		g_autoptr(DnfContext) context = NULL;
 
 		context = dnf_context_new ();
+		dnf_context_set_release_ver (context, release_ver);
 		ret = pk_backend_setup_dnf_context (context, priv->conf, release_ver, &error);
 		if (!ret) {
 			g_debug ("failed to setup context: %s", error->message);

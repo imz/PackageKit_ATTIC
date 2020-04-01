@@ -71,6 +71,14 @@ gboolean	 pk_client_helper_start			(PkClientHelper	*client_helper,
 							 gchar		**argv,
 							 gchar		**envp,
 							 GError		**error);
+gboolean	 pk_client_helper_start_with_socket	(PkClientHelper	*client_helper,
+							 GSocket	*socket,
+							 gchar		**argv,
+							 gchar		**envp,
+							 GError		**error);
+
+
+gboolean 	pk_client_helper_is_active		(PkClientHelper	*client_helper);
 
 G_END_DECLS
 

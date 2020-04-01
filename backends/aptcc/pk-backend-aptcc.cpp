@@ -28,8 +28,12 @@
 #include <pk-backend.h>
 #include <pk-backend-spawn.h>
 
+#include <apt-pkg/aptconfiguration.h>
+#include <apt-pkg/error.h>
+#include <apt-pkg/fileutl.h>
 #include <apt-pkg/init.h>
 #include <apt-pkg/error.h>
+#include <apt-pkg/pkgsystem.h>
 
 #include "apt-intf.h"
 #include "apt-cache-file.h"
@@ -237,11 +241,6 @@ void pk_backend_required_by(PkBackend *backend,
                             gboolean recursive)
 {
     pk_backend_job_thread_create(job, backend_depends_on_or_requires_thread, NULL, NULL);
-}
-
-void pk_backend_get_distro_upgrades(PkBackend *backend, PkBackendJob *job)
-{
-    pk_backend_spawn_helper(spawn, job, "get-distro-upgrade.py", "get-distro-upgrades", NULL);
 }
 
 static void backend_get_files_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
@@ -1044,11 +1043,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_REPAIR_SYSTEM,
                 PK_ROLE_ENUM_REPO_REMOVE,
                 -1);
-
-    // only add GetDistroUpgrades if the binary is present
-    if (g_file_test(PREUPGRADE_BINARY, G_FILE_TEST_EXISTS)) {
-        pk_bitfield_add(roles, PK_ROLE_ENUM_GET_DISTRO_UPGRADES);
-    }
 
     return roles;
 }

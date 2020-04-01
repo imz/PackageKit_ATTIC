@@ -24,8 +24,13 @@
 
 #include "apt-intf.h"
 
+#include <apt-pkg/aptconfiguration.h>
 #include <apt-pkg/init.h>
 #include <apt-pkg/error.h>
+#include <apt-pkg/fileutl.h>
+#include <apt-pkg/install-progress.h>
+#include <apt-pkg/sourcelist.h>
+#include <apt-pkg/update.h>
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/pkgsystem.h>
 #include <apt-pkg/update.h>
@@ -1288,33 +1293,30 @@ PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &inst
                 blocked.push_back(ver);
             }
         } else if (state.NewInstall()) {
-            /*
-             * Obsoleting packages.
-             */
             const pkgCache::VerIterator &ver = m_cache->findCandidateVer(pkg);
             if (!ver.end()) {
                 installs.push_back(ver);
             }
         } else if (state.Delete()) {
-            bool is_obsoleted = false;
-
-            /* Following code fragment should be similar to pkgDistUpgrade's one */
-            for (pkgCache::DepIterator D = pkg.RevDependsList(); not D.end(); ++D)
-            {
-                if ((D->Type == pkgCache::Dep::Obsoletes)
-                    && ((*m_cache)[D.ParentPkg()].CandidateVer != nullptr)
-                    && (*m_cache)[D.ParentPkg()].CandidateVerIter(*m_cache).Downloadable()
-                    && ((pkgCache::Version*)D.ParentVer() == (*m_cache)[D.ParentPkg()].CandidateVer)
-                    && (*m_cache)->VS().CheckDep(pkg.CurrentVer().VerStr(), D)
-                    && ((*m_cache)->GetPkgPriority(D.ParentPkg()) >= (*m_cache)->GetPkgPriority(pkg)))
-                {
-                    is_obsoleted = true;
-                    break;
-                }
-            }
-
             const pkgCache::VerIterator &ver = m_cache->findCandidateVer(pkg);
             if (!ver.end()) {
+                bool is_obsoleted = false;
+
+                /* Following code fragment should be similar to pkgDistUpgrade's one */
+                for (pkgCache::DepIterator D = pkg.RevDependsList(); not D.end(); ++D)
+                {
+                    if ((D->Type == pkgCache::Dep::Obsoletes)
+                        && ((*m_cache)[D.ParentPkg()].CandidateVer != nullptr)
+                        && (*m_cache)[D.ParentPkg()].CandidateVerIter(*m_cache).Downloadable()
+                        && ((pkgCache::Version*)D.ParentVer() == (*m_cache)[D.ParentPkg()].CandidateVer)
+                        && (*m_cache)->VS().CheckDep(pkg.CurrentVer().VerStr(), D)
+                        && ((*m_cache)->GetPkgPriority(D.ParentPkg()) >= (*m_cache)->GetPkgPriority(pkg)))
+                    {
+                        is_obsoleted = true;
+                        break;
+                    }
+                }
+
                 if( is_obsoleted )
                 {
                     /* Obsoleted packages */
@@ -2221,7 +2223,7 @@ bool AptIntf::installPackages(PkBitfield flags)
 
     // we could try to see if this is the case
     setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-    _system->UnLock();
+    _system->UnLockInner();
 
     pkgPackageManager::OrderResult res;
 
@@ -2311,6 +2313,7 @@ bool AptIntf::installPackages(PkBitfield flags)
     close(readFromChildFD[0]);
     close(readFromChildFD[1]);
     close(pty_master);
+    _system->LockInner();
 
     cout << "Parent finished..." << endl;
     return true;

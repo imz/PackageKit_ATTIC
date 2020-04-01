@@ -1,8 +1,7 @@
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*-
  *
- * Copyright (C) 2018 Bernhard Rosenkraenzer <bero@lindev.ch>
+ * Copyright (C) 2020 Neal Gompa <ngompa13@gmail.com>
  * based on dnf-backend-vendor-mageia.c
- * Copyright (C) 2016 Neal Gompa <ngompa13@gmail.com>
  *
  * Licensed under the GNU Lesser General Public License Version 2.1
  *
@@ -26,10 +25,10 @@
 gboolean
 dnf_validate_supported_repo (const gchar *id)
 {
-	guint i, j, k, l, m;
+	guint i, j, k, l;
 
 	const gchar *valid_sourcesect[] = { "",
-					  "-unsupported",
+					  "-contrib",
 					  "-restricted",
 					  "-non-free",
 					  NULL };
@@ -39,37 +38,23 @@ dnf_validate_supported_repo (const gchar *id)
 					  "-source",
 					  NULL };
 
-	const gchar *valid_arch[] = { "znver1",
-				      "x86_64",
-				      "i686",
-				      "aarch64",
-				      "armv7hnl",
+	const gchar *valid_arch[] = { "x86_64",
+				      "i586",
 				      NULL };
 
-	const gchar *valid_stage[] = {  "",
-					"-updates",
-					"-testing",
-					NULL };
-
-	const gchar *valid[] = { "openmandriva",
+	const gchar *valid[] = { "rosa",
 				 "updates",
 				 "testing",
-				 "cooker",
-				 "rolling",
-				 "rock",
-				 "release",
 				 NULL };
 
 	/* Iterate over the ID arrays to find a matching identifier */
 	for (i = 0; valid[i] != NULL; i++) {
-		for (j = 0; valid_stage[j] != NULL; j++) {
-			for (k = 0; valid_arch[k] != NULL; k++) {
-				for (l = 0; valid_sourcesect[l] != NULL; l++) {
-					for (m = 0; valid_sourcetype[m] != NULL; m++) {
-						g_autofree gchar *source_entry = g_strconcat(valid[i], valid_stage[j], "-", valid_arch[k], valid_sourcesect[l], valid_sourcetype[m], NULL);
-						if (g_strcmp0 (id, source_entry) == 0) {
-							return TRUE;
-						}
+		for (j = 0; valid_arch[j] != NULL; j++) {
+			for (k = 0; valid_sourcesect[k] != NULL; k++) {
+				for (l = 0; valid_sourcetype[l] != NULL; l++) {
+					g_autofree gchar *source_entry = g_strconcat(valid[i], "-", valid_arch[j], valid_sourcesect[k], valid_sourcetype[l], NULL);
+					if (g_strcmp0 (id, source_entry) == 0) {
+						return TRUE;
 					}
 				}
 			}
