@@ -28,7 +28,6 @@
 #include <pk-backend.h>
 #include <packagekit-glib2/pk-debug.h>
 
-#include <apt-pkg/aptconfiguration.h>
 #include <apt-pkg/error.h>
 #include <apt-pkg/fileutl.h>
 #include <apt-pkg/init.h>
