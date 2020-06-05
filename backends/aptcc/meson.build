@@ -6,7 +6,7 @@ gstreamer_dep = dependency('gstreamer-1.0')
 gstreamer_base_dep = dependency('gstreamer-base-1.0')
 gstreamer_plugins_base_dep = dependency('gstreamer-plugins-base-1.0')
 appstream_dep = dependency('appstream', version: '>=0.12')
-apt_pkg_dep = dependency('apt-pkg', version: '>=1.9.2')
+apt_pkg_dep = cpp_compiler.find_library('apt-pkg')
 
 # Check whether apt supports ddtp
 ddtp_flag = []
@@ -43,8 +43,6 @@ shared_module(
   'apt-intf.h',
   'pkg-list.cpp',
   'pkg-list.h',
-  'deb-file.cpp',
-  'deb-file.h',
   'pk-backend-aptcc.cpp',
   include_directories: packagekit_src_include,
   dependencies: [
