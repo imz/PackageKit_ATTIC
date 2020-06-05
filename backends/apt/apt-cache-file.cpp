@@ -26,6 +26,7 @@
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/progress.h>
 #include <apt-pkg/error.h>
+#include <apt-pkg/version.h>
 
 #include "apt-utils.h"
 #include "apt-messages.h"
@@ -289,7 +290,24 @@ bool AptCacheFile::isRemovingEssentialPackages()
         }
 
         if ((*this)[I].Delete() == true) {
-            if (Added[I->ID] == false) {
+            bool is_obsoleted = false;
+
+            /* Following code fragment should be similar to pkgDistUpgrade's one */
+            for (pkgCache::DepIterator D = I.RevDependsList(); not D.end(); ++D)
+            {
+                if ((D->Type == pkgCache::Dep::Obsoletes)
+                    && ((*this)[D.ParentPkg()].CandidateVer != nullptr)
+                    && (*this)[D.ParentPkg()].CandidateVerIter(*this).Downloadable()
+                    && ((pkgCache::Version*)D.ParentVer() == (*this)[D.ParentPkg()].CandidateVer)
+                    && (*this)->VS().CheckDep(I.CurrentVer().VerStr(), D)
+                    && ((*this)->GetPkgPriority(D.ParentPkg()) >= (*this)->GetPkgPriority(I)))
+                {
+                    is_obsoleted = true;
+                    break;
+                }
+            }
+
+            if ((Added[I->ID] == false) && (is_obsoleted == false)) {
                 Added[I->ID] = true;
                 List += string(I.Name()) + " ";
             }
@@ -310,7 +328,24 @@ bool AptCacheFile::isRemovingEssentialPackages()
             pkgCache::PkgIterator P = D.SmartTargetPkg();
             if ((*this)[P].Delete() == true)
             {
-                if (Added[P->ID] == true){
+                bool is_obsoleted = false;
+
+                /* Following code fragment should be similar to pkgDistUpgrade's one */
+                for (pkgCache::DepIterator Dep2 = P.RevDependsList(); not Dep2.end(); ++Dep2)
+                {
+                    if ((Dep2->Type == pkgCache::Dep::Obsoletes)
+                        && ((*this)[Dep2.ParentPkg()].CandidateVer != nullptr)
+                        && (*this)[Dep2.ParentPkg()].CandidateVerIter(*this).Downloadable()
+                        && ((pkgCache::Version*)Dep2.ParentVer() == (*this)[Dep2.ParentPkg()].CandidateVer)
+                        && (*this)->VS().CheckDep(P.CurrentVer().VerStr(), Dep2)
+                        && ((*this)->GetPkgPriority(Dep2.ParentPkg()) >= (*this)->GetPkgPriority(P)))
+                    {
+                        is_obsoleted = true;
+                        break;
+                    }
+                }
+
+                if ((Added[P->ID] == true) || (is_obsoleted == true)){
                     continue;
                 }
                 Added[P->ID] = true;
