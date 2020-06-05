@@ -6,6 +6,7 @@ install_data(
 dbus_config_data = configuration_data()
 dbus_config_data.set('PACKAGEKIT_USER', get_option('packagekit_user'))
 dbus_config_data.set('libexecdir', join_paths(get_option('prefix'), get_option('libexecdir')))
+dbus_config_data.set('bindir', join_paths(get_option('prefix'), get_option('bindir')))
 
 dbus_sys_dir = get_option('dbus_sys')
 if dbus_sys_dir == ''

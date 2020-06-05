@@ -8,39 +8,6 @@ gstreamer_plugins_base_dep = dependency('gstreamer-plugins-base-1.0')
 appstream_dep = dependency('appstream', version: '>=0.11')
 
 apt_pkg_dep = cpp_compiler.find_library('apt-pkg')
-apt_inst_dep = cpp_compiler.find_library('apt-inst')
-
-if not cpp_compiler.compiles(
-  '''
-    #include <apt-pkg/pkgsystem.h>
-    int main () {
-      _system->ArchitecturesSupported();
-      return 0;
-    }
-  ''',
-  dependencies: [
-    apt_pkg_dep,
-    apt_inst_dep
-  ]
-)
-  error ('libapt-pkg 1.1 or later is required')
-endif
-
-if not cpp_compiler.compiles(
-  '''
-    #include <apt-pkg/pkgsystem.h>
-    int main () {
-      _system->LockInner();
-      return 0;
-    }
-  ''',
-  dependencies: [
-    apt_pkg_dep,
-    apt_inst_dep
-  ]
-)
-  error ('libapt-pkg 1.7 or later is required - or backported frontend locking')
-endif
 
 # Check whether apt supports ddtp
 ddtp_flag = []
@@ -53,8 +20,7 @@ if cpp_compiler.compiles(
     }
   ''',
   dependencies: [
-    apt_pkg_dep,
-    apt_inst_dep
+    apt_pkg_dep
   ]
 )
   ddtp_flag = ['-DHAVE_DDTP']
@@ -78,15 +44,12 @@ shared_module(
   'apt-intf.h',
   'pkg-list.cpp',
   'pkg-list.h',
-  'deb-file.cpp',
-  'deb-file.h',
   'pk-backend-aptcc.cpp',
   include_directories: packagekit_src_include,
   dependencies: [
     packagekit_glib2_dep,
     gmodule_dep,
     apt_pkg_dep,
-    apt_inst_dep,
     gstreamer_dep,
     gstreamer_base_dep,
     gstreamer_plugins_base_dep,
