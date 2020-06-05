@@ -77,30 +77,25 @@ AptIntf::AptIntf(PkBackendJob *job) :
 
 bool AptIntf::init(gchar **localDebs)
 {
-    const gchar *locale;
     const gchar *http_proxy;
     const gchar *ftp_proxy;
 
     // set locale
-    if (locale = pk_backend_job_get_locale(m_job)) {
-        setlocale(LC_ALL, locale);
-        // TODO why this cuts characters on ui?
-        // 		string _locale(locale);
-        // 		size_t found;
-        // 		found = _locale.find('.');
-        // 		_locale.erase(found);
-        // 		_config->Set("APT::Acquire::Translation", _locale);
-    }
+    setEnvLocaleFromJob();
 
     // set http proxy
     http_proxy = pk_backend_job_get_proxy_http(m_job);
-    if (http_proxy != NULL)
-        setenv("http_proxy", http_proxy, 1);
+    if (http_proxy != NULL) {
+        g_autofree gchar *uri = pk_backend_convert_uri(http_proxy);
+        g_setenv("http_proxy", uri, TRUE);
+    }
 
     // set ftp proxy
     ftp_proxy = pk_backend_job_get_proxy_ftp(m_job);
-    if (ftp_proxy != NULL)
-        setenv("ftp_proxy", ftp_proxy, 1);
+    if (ftp_proxy != NULL) {
+        g_autofree gchar *uri = pk_backend_convert_uri(ftp_proxy);
+        g_setenv("ftp_proxy", uri, TRUE);
+    }
 
     // Check if we should open the Cache with lock
     bool withLock;
@@ -177,8 +172,8 @@ bool AptIntf::init(gchar **localDebs)
         _config->Set("Dpkg::Options::", "--force-confdef");
         _config->Set("Dpkg::Options::", "--force-confold");
         // Ensure nothing interferes with questions
-        setenv("APT_LISTCHANGES_FRONTEND", "none", 1);
-        setenv("APT_LISTBUGS_FRONTEND", "none", 1);
+        g_setenv("APT_LISTCHANGES_FRONTEND", "none", TRUE);
+        g_setenv("APT_LISTBUGS_FRONTEND", "none", TRUE);
     }
 
     // Check if there are half-installed packages and if we can fix them
@@ -188,6 +183,20 @@ bool AptIntf::init(gchar **localDebs)
 AptIntf::~AptIntf()
 {
     delete m_cache;
+}
+
+void AptIntf::setEnvLocaleFromJob()
+{
+    const gchar *locale = pk_backend_job_get_locale(m_job);
+    if (locale == NULL)
+        return;
+
+    // set daemon locale
+    setlocale(LC_ALL, locale);
+
+    // processes spawned by APT need to inherit the right locale as well
+    g_setenv("LANG", locale, TRUE);
+    g_setenv("LANGUAGE", locale, TRUE);
 }
 
 void AptIntf::cancel()
@@ -1385,7 +1394,7 @@ void AptIntf::providesMimeType(PkgList &output, gchar **values)
             pk_backend_job_error_code(m_job,
                                       PK_ERROR_ENUM_INTERNAL_ERROR,
                                       "No AppStream metadata was found. This means we are unable to find any information for your request.");
-	}
+        }
     }
 }
 
@@ -1924,12 +1933,6 @@ void AptIntf::refreshCache()
     if (m_cache->BuildCaches() == false) {
         return;
     }
-
-    // missing repo gpg signature would appear here
-    if (_error->PendingError() == false && _error->empty() == false) {
-        // TODO this shouldn't
-        show_errors(m_job, PK_ERROR_ENUM_GPG_FAILURE);
-    }
 }
 
 void AptIntf::markAutoInstalled(const PkgList &pkgs)
@@ -2220,7 +2223,7 @@ bool AptIntf::installPackages(PkBitfield flags)
     pk_backend_job_set_percentage(m_job, PK_BACKEND_PERCENTAGE_INVALID);
 
     // we could try to see if this is the case
-    setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
+    g_setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", TRUE);
     _system->UnLock();
 
     pkgPackageManager::OrderResult res;
@@ -2245,32 +2248,29 @@ bool AptIntf::installPackages(PkBitfield flags)
         close(readFromChildFD[0]);
 
         // Change the locale to not get libapt localization
-        setlocale(LC_ALL, "C");
+        setlocale(LC_ALL, "C.UTF-8");
+        g_setenv("LANG", "C.UTF-8", TRUE);
+        g_setenv("LANGUAGE", "C.UTF-8", TRUE);
 
         // Debconf handling
         const gchar *socket = pk_backend_job_get_frontend_socket(m_job);
         if ((m_interactive) && (socket != NULL)) {
-            setenv("DEBIAN_FRONTEND", "passthrough", 1);
-            setenv("DEBCONF_PIPE", socket, 1);
+            g_setenv("DEBIAN_FRONTEND", "passthrough", TRUE);
+            g_setenv("DEBCONF_PIPE", socket, TRUE);
         } else {
             // we don't have a socket set or are not interactive, let's fallback to noninteractive
-            setenv("DEBIAN_FRONTEND", "noninteractive", 1);
+            g_setenv("DEBIAN_FRONTEND", "noninteractive", TRUE);
         }
 
-        const gchar *locale;
         // Set the LANGUAGE so debconf messages get localization
-        if (locale = pk_backend_job_get_locale(m_job)) {
-            setenv("LANGUAGE", locale, 1);
-            setenv("LANG", locale, 1);
-            //setenv("LANG", "C", 1);
-        }
+        setEnvLocaleFromJob();
 
         // apt will record this in its history.log
         guint uid = pk_backend_job_get_uid(m_job);
         if (uid > 0) {
             gchar buf[16];
             snprintf(buf, sizeof(buf), "%d", uid);
-            setenv("PACKAGEKIT_CALLER_UID", buf, 1);
+            g_setenv("PACKAGEKIT_CALLER_UID", buf, TRUE);
         }
 
         PkRoleEnum role = pk_backend_job_get_role(m_job);

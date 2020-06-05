@@ -228,6 +228,7 @@ public:
     AptCacheFile* aptCacheFile() const;
 
 private:
+    void setEnvLocaleFromJob();
     bool isApplication(const pkgCache::VerIterator &verIter);
     bool matchesQueries(const vector<string> &queries, string s);
 

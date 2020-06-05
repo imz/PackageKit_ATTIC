@@ -28,8 +28,8 @@
 
 #include <syslog.h>
 
-static off_t dcomplete = 0;
-static off_t dtotal = 0;
+static off_t transaction_dcomplete = 0;
+static off_t transaction_dtotal = 0;
 
 static alpm_pkg_t *dpkg = NULL;
 static GString *dfiles = NULL;
@@ -136,11 +136,11 @@ pk_alpm_transaction_totaldlcb (off_t total)
 	g_assert (pkalpm_current_job);
 	job = pkalpm_current_job;
 
-	if (dtotal > 0 && dpkg != NULL)
+	if (transaction_dtotal > 0 && dpkg != NULL)
 		pk_alpm_transaction_download_end (job);
 
-	dcomplete = 0;
-	dtotal = total;
+	transaction_dcomplete = 0;
+	transaction_dtotal = total;
 }
 
 static void
@@ -152,32 +152,48 @@ pk_alpm_transaction_dlcb (const gchar *basename, off_t complete, off_t total)
 	g_assert (pkalpm_current_job);
 	job = pkalpm_current_job;
 
-	g_return_if_fail (basename != NULL);
-	g_return_if_fail (complete <= total);
+	g_return_if_fail(basename != NULL);
 
-	if (total > 0)
-		sub_percentage = complete * 100 / total;
-
-	if (dtotal > 0) {
-		percentage = (dcomplete + complete) * 100 / dtotal;
-	} else if (dtotal < 0) {
-		/* database files */
-		percentage = (dcomplete * 100 + sub_percentage) / -dtotal;
-
-		if (complete == total)
-			complete = total = 1;
-		else
-			complete = total + 1;
-	}
-
-	if (complete == 0) {
+	// these conditions are documented in libalpm/dload.c
+	if (complete == 0 && total == -1) { // initialized download
 		g_debug ("downloading file %s", basename);
 		pk_backend_job_set_status (job, PK_STATUS_ENUM_DOWNLOAD);
 		pk_alpm_transaction_download_start (job, basename);
-	} else if (complete == total) {
-		dcomplete += complete;
+
+	} else if (complete == 0 && total == 0) { // doing non-download event
+		return;
+
+	} else if (complete > 0 && complete == total) { // download is complete
+		pk_backend_job_set_percentage(job, 100);
+		transaction_dcomplete += complete;
+
+	} else if (complete > 0 && complete < total && total > 0) { // download in progress
+		sub_percentage = (complete * 100) / (total);
+		if (transaction_dtotal > 0) {
+			// positive totals indicate packages
+			percentage = ((transaction_dcomplete + complete) * 100) / transaction_dtotal;
+
+			pk_backend_job_set_percentage (job, percentage);
+		} else if (transaction_dtotal < 0) {
+			// negative totals indicate databases
+			guint total_databases = -transaction_dtotal;
+			static off_t previous_total = 0;
+			static guint current_database = 0;
+
+			if (total != previous_total) {
+				current_database++;
+				previous_total = total;
+			}
+
+			percentage = ((current_database-1)*100) / total_databases;
+			percentage += sub_percentage / total_databases;
+
+			pk_backend_job_set_percentage (job, percentage);
+		}
+
+	} else {
+		syslog (LOG_DAEMON | LOG_WARNING, "unhandled download callback case, most likely libalpm change or error");
 	}
-	pk_backend_job_set_percentage (job, percentage);
 }
 
 static void
@@ -190,6 +206,34 @@ pk_alpm_transaction_progress_cb (alpm_progress_t type, const gchar *target,
 	PkBackendJob* job;
 	g_assert (pkalpm_current_job);
 	job = pkalpm_current_job;
+
+	if (g_strcmp0(target, "") == 0) {
+		switch (type) {
+			case ALPM_PROGRESS_KEYRING_START:
+				pk_backend_job_set_status(job, PK_STATUS_ENUM_SIG_CHECK);
+				pk_backend_job_set_percentage(job, percent);
+				break;
+			case ALPM_PROGRESS_INTEGRITY_START:
+				pk_backend_job_set_status(job, PK_STATUS_ENUM_SIG_CHECK);
+				pk_backend_job_set_percentage(job, percent);
+				break;
+			case ALPM_PROGRESS_LOAD_START:
+				pk_backend_job_set_status(job, PK_STATUS_ENUM_LOADING_CACHE);
+				pk_backend_job_set_percentage(job, percent);
+				break;
+			case ALPM_PROGRESS_DISKSPACE_START:
+				pk_backend_job_set_status(job, PK_STATUS_ENUM_TEST_COMMIT);
+				pk_backend_job_set_percentage(job, percent);
+				break;
+			case ALPM_PROGRESS_CONFLICTS_START:
+				pk_backend_job_set_status(job, PK_STATUS_ENUM_TEST_COMMIT);
+				pk_backend_job_set_percentage(job, percent);
+				break;
+			default:
+				syslog (LOG_DAEMON | LOG_WARNING, "unhandled progress type for transaction %d", type);
+				break;
+		}
+	}
 
 	/* TODO: remove block if/when this is made consistent upstream */
 	if (type == ALPM_PROGRESS_CONFLICTS_START ||
@@ -217,11 +261,6 @@ pk_alpm_transaction_progress_cb (alpm_progress_t type, const gchar *target,
 	case ALPM_PROGRESS_DOWNGRADE_START:
 	case ALPM_PROGRESS_REINSTALL_START:
 	case ALPM_PROGRESS_REMOVE_START:
-	case ALPM_PROGRESS_CONFLICTS_START:
-	case ALPM_PROGRESS_DISKSPACE_START:
-	case ALPM_PROGRESS_INTEGRITY_START:
-	case ALPM_PROGRESS_LOAD_START:
-	case ALPM_PROGRESS_KEYRING_START:
 		if (percent == recent)
 			break;
 

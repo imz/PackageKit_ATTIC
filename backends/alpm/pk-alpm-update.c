@@ -29,8 +29,11 @@
 #include <sys/types.h>
 #include <utime.h>
 #include <errno.h>
+#include <stdio.h>
+#include <syslog.h>
 
 #include "pk-backend-alpm.h"
+#include "pk-alpm-config.h"
 #include "pk-alpm-error.h"
 #include "pk-alpm-packages.h"
 #include "pk-alpm-transaction.h"
@@ -271,6 +274,9 @@ pk_alpm_update_database (PkBackendJob *job, gint force, alpm_db_t *db, GError **
 	if (pk_alpm_update_is_db_fresh (job, db))
 		return TRUE;
 
+	if (!force)
+		return TRUE;
+
 	result = alpm_db_update (force, db);
 	if (result > 0) {
 		dlcb ("", 1, 1);
@@ -417,12 +423,32 @@ pk_backend_get_updates_thread (PkBackendJob *job, GVariant* params, gpointer p)
 {
 	PkBackend *backend = pk_backend_job_get_backend (job);
 	PkBackendAlpmPrivate *priv = pk_backend_get_user_data (backend);
+	int update_count = 0;
 	const alpm_list_t *i, *syncdbs;
 	g_autoptr(GError) error = NULL;
 	PkBitfield filters = 0;
+	FILE *file;
+	int stored_count;
+	alpm_cb_totaldl totaldlcb;
+	gboolean ret;
+	alpm_handle_t* handle = pk_alpm_configure (backend, PK_BACKEND_CONFIG_FILE, TRUE, error);
 
-	if (!pk_alpm_update_databases (job, 0, &error)) {
-		return pk_alpm_error_emit (job, error);
+	alpm_logaction (handle, PK_LOG_PREFIX, "synchronizing package lists\n");
+	pk_backend_job_set_status (job, PK_STATUS_ENUM_DOWNLOAD_PACKAGELIST);
+
+	/* set total size to minus the number of databases */
+	i = alpm_get_syncdbs (handle);
+
+	for (; i != NULL; i = i->next) {
+		if (pk_backend_job_is_cancelled (job)) {
+			/* pretend to be finished */
+			i = NULL;
+			break;
+		}
+
+		ret = pk_alpm_update_database (job, TRUE, i->data, error);
+		if (!ret)
+			break;
 	}
 
 	if (pk_backend_job_get_role (job) == PK_ROLE_ENUM_GET_UPDATES) {
@@ -430,7 +456,7 @@ pk_backend_get_updates_thread (PkBackendJob *job, GVariant* params, gpointer p)
 	}
 
 	/* find outdated and replacement packages */
-	syncdbs = alpm_get_syncdbs (priv->alpm);
+	syncdbs = alpm_get_syncdbs (handle);
 	for (i = alpm_db_get_pkgcache (priv->localdb); i != NULL; i = i->next) {
 		PkInfoEnum info = PK_INFO_ENUM_NORMAL;
 		alpm_pkg_t *upgrade = pk_alpm_pkg_find_update (i->data, syncdbs);
@@ -452,7 +478,33 @@ pk_backend_get_updates_thread (PkBackendJob *job, GVariant* params, gpointer p)
 		if (pk_bitfield_contain (filters, PK_FILTER_ENUM_NOT_DOWNLOADED) && pk_alpm_update_is_pkg_downloaded (upgrade))
 			continue;
 
+		update_count++;
 		pk_alpm_pkg_emit (job, upgrade, info);
+	}
+
+	if (g_file_test("/tmp/packagekit-alpm-updates", G_FILE_TEST_EXISTS)) {
+		file = fopen("/tmp/packagekit-alpm-updates", "r");
+
+		if (file != NULL) {
+			fscanf(file, "%d", &stored_count);
+			if (stored_count != update_count) {
+				g_signal_emit_by_name(backend, "updates-changed");
+			}
+			fclose(file);
+		} else {
+			syslog( LOG_DAEMON | LOG_WARNING, "Failed to open file /tmp/packagekit-alpm-updates for reading");
+			g_signal_emit_by_name(backend, "updates-changed");
+		}
+	} else {
+		g_signal_emit_by_name(backend, "updates-changed");
+	}
+
+	file = fopen("/tmp/packagekit-alpm-updates", "w");
+	if (file != NULL) {
+		fprintf(file, "%d", update_count);
+		fclose(file);
+	} else {
+		syslog( LOG_DAEMON | LOG_WARNING, "Failed to open file /tmp/packagekit-alpm-updates for writing");
 	}
 }
 
