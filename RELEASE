@@ -2,10 +2,10 @@ PackageKit Release Notes
 
 1. Write NEWS entries for PackageKit in the same format as usual.
 
-git shortlog PACKAGEKIT_1_1_13.. | grep -i -v trivial | grep -v Merge > NEWS.new
+git shortlog PACKAGEKIT_1_2_0.. | grep -i -v trivial | grep -v Merge > NEWS.new
 
 --------------------------------------------------------------------------------
-Version 1.2.0
+Version 1.2.1
 ~~~~~~~~~~~~~
 Released: 2020-xx-xx
 
@@ -20,9 +20,7 @@ New Features:
 Bugfixes:
 --------------------------------------------------------------------------------
 
-2. Add download date to docs/html/pk-download.html, save file.
-
-2.5. Update translations and commit them with sign-off:
+2. Update translations and commit them with sign-off:
 
 ninja PackageKit-pot
 tx push --source
@@ -30,13 +28,13 @@ tx pull --all --force --minimum-perc=5
 ninja-build fix-translations
 git add *.po
 
-3. Update library version if new ABI or API in configure.ac
+3. Update library version if new ABI or API in meson.build
 
 4. Commit changes in PackageKit git:
 
 # MAKE SURE THESE ARE CORRECT
-export release_version="1.2.0"
-export release_tag="PACKAGEKIT_1_2_0"
+export release_version="1.2.1"
+export release_tag="PACKAGEKIT_1_2_1"
 
 git commit -a -m "Release ${release_version}"
 git tag -s -f -m "Release ${release_version}" "${release_tag}"
@@ -45,17 +43,17 @@ git push
 git push git+ssh://hughsient@git.freedesktop.org/git/packagekit
 git push --tags git+ssh://hughsient@git.freedesktop.org/git/packagekit
 
-5. run 'make distcheck'
+5. run 'ninja dist'
 
 5a. Generate the additon verification metadata
 
-sha1sum PackageKit-${release_version}.tar.xz > PackageKit-${release_version}.tar.xz.sha1
-sha256sum PackageKit-${release_version}.tar.xz > PackageKit-${release_version}.tar.xz.sha256
-gpg -b -a PackageKit-${release_version}.tar.xz
+sha1sum meson-dist/PackageKit-${release_version}.tar.xz > meson-dist/PackageKit-${release_version}.tar.xz.sha1
+sha256sum meson-dist/PackageKit-${release_version}.tar.xz > meson-dist/PackageKit-${release_version}.tar.xz.sha256
+gpg -b -a meson-dist/PackageKit-${release_version}.tar.xz
 
 6. Upload tarball to:
 
-scp PackageKit-${release_version}.tar.* hughsient@annarchy.freedesktop.org:/srv/www.freedesktop.org/www/software/PackageKit/releases/
+scp meson-dist/PackageKit-${release_version}.tar.* hughsient@annarchy.freedesktop.org:/srv/www.freedesktop.org/www/software/PackageKit/releases/
 
 7. Do post release version bump in configure.ac
 
@@ -64,12 +62,10 @@ scp PackageKit-${release_version}.tar.* hughsient@annarchy.freedesktop.org:/srv/
 git commit -a -m "trivial: post release version bump"
 git push
 
-9. Upload new html sources
-
-10. Send an email to packagekit@lists.freedesktop.org
+9. Send an email to packagekit@lists.freedesktop.org
 
 =================================================
-PackageKit 1.1.13 released!
+PackageKit 1.2.0 released!
 
 Tarballs available here: http://www.freedesktop.org/software/PackageKit/releases/
 

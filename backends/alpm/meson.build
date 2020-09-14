@@ -24,6 +24,7 @@ shared_module(
   'pk-alpm-transaction.c',
   'pk-alpm-transaction.h',
   'pk-alpm-update.c',
+  'pk-alpm-update.h',
   include_directories: packagekit_src_include,
   dependencies: [
     packagekit_glib2_dep,
@@ -33,9 +34,9 @@ shared_module(
   c_args: [
     '-DPK_LOG_PREFIX="PACKAGEKIT"',
     '-DG_LOG_DOMAIN="PackageKit-alpm"',
-    '-DPK_BACKEND_CONFIG_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'pacman.conf')),
-    '-DPK_BACKEND_GROUP_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'groups.list')),
-    '-DPK_BACKEND_REPO_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'repos.list')),
+    '-DPK_BACKEND_CONFIG_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'PackageKit', 'alpm.d', 'pacman.conf')),
+    '-DPK_BACKEND_GROUP_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'PackageKit', 'alpm.d', 'groups.list')),
+    '-DPK_BACKEND_REPO_FILE="@0@"'.format(join_paths(get_option('sysconfdir'), 'PackageKit', 'alpm.d', 'repos.list')),
     '-DPK_BACKEND_DEFAULT_PATH="/bin:/usr/bin:/sbin:/usr/sbin"',
   ],
   install: true,
