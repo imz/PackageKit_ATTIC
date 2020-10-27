@@ -132,11 +132,6 @@ public:
     PkgList searchPackageDetails(const vector<string> &queries);
 
     /**
-      * Returns a list of all packages that matched contains the given files
-      */
-    PkgList searchPackageFiles(gchar **values);
-
-    /**
       * Returns a list of all packages that can be updated
       * Pass a PkgList to get the blocked updates as well
       */
@@ -199,11 +194,6 @@ public:
     void emitUpdateDetails(const PkgList &pkgs);
 
     /**
-      *  Emits the files of a package
-      */
-    void emitPackageFiles(const gchar *pi);
-
-    /**
       *  Download and install packages
       */
     bool installPackages(PkBitfield flags);
@@ -233,7 +223,6 @@ public:
 
 private:
     void setEnvLocaleFromJob();
-    bool isApplication(const pkgCache::VerIterator &verIter);
     bool matchesQueries(const vector<string> &queries, string s);
 
     /**
