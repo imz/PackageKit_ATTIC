@@ -129,7 +129,6 @@ PkBitfield pk_backend_get_filters(PkBackend *backend)
                 PK_FILTER_ENUM_DEVELOPMENT,
                 PK_FILTER_ENUM_SUPPORTED,
                 PK_FILTER_ENUM_FREE,
-                PK_FILTER_ENUM_APPLICATION,
                 PK_FILTER_ENUM_DOWNLOADED,
                 -1);
 
@@ -241,56 +240,6 @@ void pk_backend_required_by(PkBackend *backend,
                             gboolean recursive)
 {
     pk_backend_job_thread_create(job, backend_depends_on_or_requires_thread, NULL, NULL);
-}
-
-static void backend_get_files_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
-{
-    gchar **package_ids;
-    gchar *pi;
-
-    g_variant_get(params, "(^a&s)",
-                  &package_ids);
-
-    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
-    if (!apt->init()) {
-        g_debug("Failed to create apt cache");
-        return;
-    }
-
-    if (package_ids == NULL) {
-        pk_backend_job_error_code(job,
-                                  PK_ERROR_ENUM_PACKAGE_ID_INVALID,
-                                  "Invalid package id");
-        return;
-    }
-
-    pk_backend_job_set_status(job, PK_STATUS_ENUM_QUERY);
-    for (uint i = 0; i < g_strv_length(package_ids); ++i) {
-        pi = package_ids[i];
-        if (pk_package_id_check(pi) == false) {
-            pk_backend_job_error_code(job,
-                                      PK_ERROR_ENUM_PACKAGE_ID_INVALID,
-                                      "%s",
-                                      pi);
-            return;
-        }
-
-        const pkgCache::VerIterator &ver = apt->aptCacheFile()->resolvePkgID(pi);
-        if (ver.end()) {
-            pk_backend_job_error_code(job,
-                                      PK_ERROR_ENUM_PACKAGE_NOT_FOUND,
-                                      "Couldn't find package %s",
-                                      pi);
-            return;
-        }
-
-        apt->emitPackageFiles(pi);
-    }
-}
-
-void pk_backend_get_files(PkBackend *backend, PkBackendJob *job, gchar **package_ids)
-{
-    pk_backend_job_thread_create(job, backend_get_files_thread, NULL, NULL);
 }
 
 static void backend_get_details_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
@@ -579,39 +528,6 @@ static void pk_backend_resolve_thread(PkBackendJob *job, GVariant *params, gpoin
 void pk_backend_resolve(PkBackend *backend, PkBackendJob *job, PkBitfield filters, gchar **packages)
 {
     pk_backend_job_thread_create(job, pk_backend_resolve_thread, NULL, NULL);
-}
-
-static void pk_backend_search_files_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
-{
-    gchar **search;
-    PkBitfield filters;
-    AptIntf *apt = static_cast<AptIntf*>(pk_backend_job_get_user_data(job));
-
-    g_variant_get(params, "(t^a&s)",
-                  &filters,
-                  &search);
-
-    pk_backend_job_set_allow_cancel(job, true);
-
-    // as we can only search for installed files lets avoid the opposite
-    if (!pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_INSTALLED)) {
-        if (!apt->init()) {
-            g_debug("Failed to create apt cache");
-            return;
-        }
-
-        pk_backend_job_set_status(job, PK_STATUS_ENUM_QUERY);
-        PkgList output;
-        output = apt->searchPackageFiles(search);
-
-        // It's faster to emit the packages here rather than in the matching part
-        apt->emitPackages(output, filters);
-    }
-}
-
-void pk_backend_search_files(PkBackend *backend, PkBackendJob *job, PkBitfield filters, gchar **values)
-{
-    pk_backend_job_thread_create(job, pk_backend_search_files_thread, NULL, NULL);
 }
 
 static void backend_search_groups_thread(PkBackendJob *job, GVariant *params, gpointer user_data)
@@ -1021,7 +937,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_CANCEL,
                 PK_ROLE_ENUM_DEPENDS_ON,
                 PK_ROLE_ENUM_GET_DETAILS,
-                PK_ROLE_ENUM_GET_FILES,
                 PK_ROLE_ENUM_REQUIRED_BY,
                 PK_ROLE_ENUM_GET_PACKAGES,
                 PK_ROLE_ENUM_WHAT_PROVIDES,
@@ -1034,7 +949,6 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_DOWNLOAD_PACKAGES,
                 PK_ROLE_ENUM_RESOLVE,
                 PK_ROLE_ENUM_SEARCH_DETAILS,
-                PK_ROLE_ENUM_SEARCH_FILE,
                 PK_ROLE_ENUM_SEARCH_GROUP,
                 PK_ROLE_ENUM_SEARCH_NAME,
                 PK_ROLE_ENUM_UPDATE_PACKAGES,
