@@ -104,7 +104,11 @@ Python3 backend for PackageKit.
 %patch1 -p1
 
 %build
+%ifnarch %e2k
+%add_optflags -std=c++17
+%else
 %add_optflags -std=c++14
+%endif
 %add_optflags -D_FILE_OFFSET_BITS=64
 %meson \
 	-Dpackaging_backend=aptcc \
