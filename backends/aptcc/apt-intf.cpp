@@ -34,11 +34,8 @@
 #include <apt-pkg/algorithms.h>
 #include <apt-pkg/pkgsystem.h>
 #include <apt-pkg/version.h>
-#include <apt-pkg/rpmsystem.h>
 
 #include <appstream.h>
-
-#include <boost/scope_exit.hpp>
 
 #include <sys/prctl.h>
 #include <sys/statvfs.h>
@@ -278,21 +275,6 @@ bool AptIntf::matchPackage(const pkgCache::VerIterator &ver, PkBitfield filters)
             }
         } else if (pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_SUPPORTED)) {
             if (packageIsSupported(ver, component)) {
-                return false;
-            }
-        }
-
-        // Check for applications, if they have files with .desktop
-        if (pk_bitfield_contain(filters, PK_FILTER_ENUM_APPLICATION)) {
-            // We do not support checking if it is an Application
-            // if NOT installed
-            if (!installed || !isApplication(ver)) {
-                return false;
-            }
-        } else if (pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_APPLICATION)) {
-            // We do not support checking if it is an Application
-            // if NOT installed
-            if (!installed || isApplication(ver)) {
                 return false;
             }
         }
@@ -1163,107 +1145,6 @@ PkgList AptIntf::searchPackageDetails(const vector<string> &queries)
     return output;
 }
 
-// used to return files it reads
-PkgList AptIntf::searchPackageFiles(gchar **values)
-{
-    PkgList output;
-    vector<string> packages;
-    string search;
-    regex_t re;
-
-    for (uint i = 0; i < g_strv_length(values); ++i) {
-        gchar *value = values[i];
-        if (strlen(value) < 1) {
-            continue;
-        }
-
-        if (!search.empty()) {
-            search.append("|");
-        }
-
-        if (value[0] == '/') {
-            search.append("^");
-            search.append(value);
-            search.append("$");
-        } else {
-            search.append(value);
-            search.append("$");
-        }
-    }
-
-    if(regcomp(&re, search.c_str(), REG_NOSUB) != 0) {
-        g_debug("Regex compilation error");
-        return output;
-    }
-
-    BOOST_SCOPE_EXIT( (&re) )
-    {
-        regfree(&re);
-    } BOOST_SCOPE_EXIT_END;
-
-    // Non-owner pointer
-    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
-
-    db_handler->Rewind();
-
-    while (db_handler->Skip())
-    {
-        Header header = db_handler->GetHeader();
-
-        if (m_cancel) {
-            break;
-        }
-
-        const char *FileName;
-        rpmtd fileNames = rpmtdNew();
-
-        BOOST_SCOPE_EXIT( (&fileNames) )
-        {
-            rpmtdFreeData(fileNames);
-            rpmtdFree(fileNames);
-        } BOOST_SCOPE_EXIT_END;
-
-        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) != 1)
-            && (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) != 1))
-        {
-            continue;
-        }
-
-        while ((FileName = rpmtdNextString(fileNames)) != NULL)
-        {
-            if (regexec(&re, FileName, (size_t)0, NULL, 0) == 0)
-            {
-                const char *packageName = headerGetString(header, RPMTAG_NAME);
-                if (packageName)
-                {
-                    packages.push_back(packageName);
-                }
-            }
-        }
-    }
-
-    // Resolve the package names now
-    for (const string &name : packages) {
-        if (m_cancel) {
-            break;
-        }
-
-        pkgCache::PkgIterator pkg;
-        pkg = (*m_cache)->FindPkg(name);
-        if (pkg.end()) {
-            continue;
-        }
-
-        const pkgCache::VerIterator &ver = m_cache->findVer(pkg);
-        if (ver.end()) {
-            continue;
-        }
-        output.append(ver);
-    }
-
-    return output;
-}
-
 PkgList AptIntf::getUpdates(PkgList &blocked, PkgList &downgrades, PkgList &installs, PkgList &removals, PkgList &obsoleted)
 {
     PkgList updates;
@@ -1391,116 +1272,6 @@ void AptIntf::providesMimeType(PkgList &output, gchar **values)
                                       PK_ERROR_ENUM_INTERNAL_ERROR,
                                       "No AppStream metadata was found. This means we are unable to find any information for your request.");
         }
-    }
-}
-
-bool AptIntf::isApplication(const pkgCache::VerIterator &ver)
-{
-    bool ret = false;
-
-    // Non-owner pointer
-    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
-
-    // It's currently impossible to jump to specific package, have to search through all
-    db_handler->Rewind();
-
-    while (db_handler->Skip())
-    {
-        Header header = db_handler->GetHeader();
-        if (!header)
-        {
-            continue;
-        }
-
-        if (strcmp(headerGetString(header, RPMTAG_NAME), ver.ParentPkg().Name()) != 0)
-        {
-            continue;
-        }
-
-        const char *FileName;
-        rpmtd fileNames = rpmtdNew();
-
-        BOOST_SCOPE_EXIT( (&fileNames) )
-        {
-            rpmtdFreeData(fileNames);
-            rpmtdFree(fileNames);
-        } BOOST_SCOPE_EXIT_END;
-
-        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) == 1)
-            || (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) == 1))
-        {
-            while ((FileName = rpmtdNextString(fileNames)) != NULL)
-            {
-                if (ends_with(FileName, ".desktop"))
-                {
-                    ret = true;
-                    break;
-                }
-            }
-        }
-        break;
-    }
-
-    return ret;
-}
-
-// used to emit files it reads the info directly from the files
-void AptIntf::emitPackageFiles(const gchar *pi)
-{
-    GPtrArray *files;
-    string line;
-
-    g_auto(GStrv) parts = pk_package_id_split(pi);
-
-    // Non-owner pointer
-    RPMDBHandler *db_handler = rpmSys.GetDBHandler();
-
-    // It's currently impossible to jump to specific package, have to search through all
-    db_handler->Rewind();
-
-    while (db_handler->Skip())
-    {
-        Header header = db_handler->GetHeader();
-        if (!header)
-        {
-            continue;
-        }
-
-        if (strcmp(headerGetString(header, RPMTAG_NAME), parts[PK_PACKAGE_ID_NAME]) != 0)
-        {
-            continue;
-        }
-
-        const char *FileName;
-        rpmtd fileNames = rpmtdNew();
-
-        BOOST_SCOPE_EXIT( (&fileNames) )
-        {
-            rpmtdFreeData(fileNames);
-            rpmtdFree(fileNames);
-        } BOOST_SCOPE_EXIT_END;
-
-        files = g_ptr_array_new_with_free_func(g_free);
-
-        BOOST_SCOPE_EXIT( (&files) )
-        {
-            g_ptr_array_unref(files);
-        } BOOST_SCOPE_EXIT_END;
-
-        if ((headerGet(header, RPMTAG_OLDFILENAMES, fileNames, HEADERGET_EXT) == 1)
-            || (headerGet(header, RPMTAG_FILENAMES, fileNames, HEADERGET_EXT) == 1))
-        {
-            while ((FileName = rpmtdNextString(fileNames)) != NULL)
-            {
-                g_ptr_array_add(files, g_strdup(FileName));
-            }
-        }
-
-        if (files->len) {
-            g_ptr_array_add(files, NULL);
-            pk_backend_job_files(m_job, pi, (gchar **) files->pdata);
-        }
-        break;
     }
 }
 
