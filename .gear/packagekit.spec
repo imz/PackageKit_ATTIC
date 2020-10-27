@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.1
-Release:   alt1
+Release:   alt2
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -283,6 +283,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Tue Oct 27 2020 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.1-alt2
+- Cut functions depending on access to rpm via apt (on request by rider@).
+
 * Mon Sep 14 2020 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.1-alt1
 - Updated to upstream version 1.2.1.
 
