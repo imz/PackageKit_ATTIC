@@ -5,8 +5,7 @@ cpp_compiler = meson.get_compiler('cpp')
 gstreamer_dep = dependency('gstreamer-1.0')
 gstreamer_base_dep = dependency('gstreamer-base-1.0')
 gstreamer_plugins_base_dep = dependency('gstreamer-plugins-base-1.0')
-appstream_dep = dependency('appstream', version: '>=0.11')
-
+appstream_dep = dependency('appstream', version: '>=0.12')
 apt_pkg_dep = cpp_compiler.find_library('apt-pkg')
 
 # Check whether apt supports ddtp
@@ -78,3 +77,34 @@ install_data(
   'pkconffile.nodiff',
   install_dir: join_paths(get_option('datadir'), 'PackageKit', 'helpers', 'aptcc'),
 )
+
+if get_option('systemd')
+  executable(
+    'pk-debconf-helper',
+    'pk-debconf-helper.c',
+    dependencies: [
+      packagekit_glib2_dep,
+      libsystemd
+    ],
+    install: true,
+    install_dir: get_option('libexecdir')
+  )
+
+  sd_config_data = configuration_data()
+  sd_config_data.set('libexecdir', join_paths(get_option('prefix'), get_option('libexecdir')))
+
+  configure_file(
+    input: 'pk-debconf-helper.service.in',
+    output: 'pk-debconf-helper.service',
+    configuration: sd_config_data,
+    install: true,
+    install_dir: systemd_user_unit_dir,
+  )
+  configure_file(
+    input: 'pk-debconf-helper.socket.in',
+    output: 'pk-debconf-helper.socket',
+    configuration: sd_config_data,
+    install: true,
+    install_dir: systemd_user_unit_dir,
+  )
+endif
