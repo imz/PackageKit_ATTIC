@@ -63,11 +63,11 @@
 #define RAMFS_MAGIC     0x858458f6
 
 AptIntf::AptIntf(PkBackendJob *job) :
+    m_cache(0),
     m_job(job),
     m_cancel(false),
-    m_terminalTimeout(120),
     m_lastSubProgress(0),
-    m_cache(0)
+    m_terminalTimeout(120)
 {
     m_cancel = false;
 }
@@ -162,6 +162,9 @@ bool AptIntf::init(gchar **localDebs)
         // Close the cache if we are going to try again
         m_cache->Close();
     }
+
+    // default settings
+    _config->CndSet("APT::Get::AutomaticRemove::Kernels", _config->FindB("APT::Get::AutomaticRemove", true));
 
     m_interactive = pk_backend_job_get_interactive(m_job);
     if (!m_interactive) {
@@ -551,7 +554,7 @@ void AptIntf::providesLibrary(PkgList &output, gchar **values)
 
             string strvalue = string(value);
             ssize_t pos = strvalue.find (".so.");
-            if ((pos != string::npos) && (pos > 0)) {
+            if ((pos > 0) && ((size_t) pos != string::npos)) {
                 // If last char is a number, add a "-" (to be policy-compliant)
                 if (g_ascii_isdigit (libPkgName.at (libPkgName.length () - 1))) {
                     libPkgName.append ("-");
@@ -1011,7 +1014,7 @@ PkgList AptIntf::getPackagesFromGroup(gchar **values)
     PkgList output;
     vector<PkGroupEnum> groups;
 
-    int len = g_strv_length(values);
+    uint len = g_strv_length(values);
     for (uint i = 0; i < len; i++) {
         if (values[i] == NULL) {
             pk_backend_job_error_code(m_job,
@@ -1715,11 +1718,7 @@ void AptIntf::markAutoInstalled(const PkgList &pkgs)
 bool AptIntf::runTransaction(const PkgList &install, const PkgList &remove, const PkgList &update,
                              bool fixBroken, PkBitfield flags, bool autoremove)
 {
-    //cout << "runTransaction" << simulate << remove << endl;
-
     pk_backend_job_set_status (m_job, PK_STATUS_ENUM_RUNNING);
-
-    bool simulate = pk_bitfield_contain(flags, PK_TRANSACTION_FLAG_ENUM_SIMULATE);
 
     // Enter the special broken fixing mode if the user specified arguments
     // THIS mode will run if fixBroken is false and the cache has broken packages
