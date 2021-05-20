@@ -65,6 +65,8 @@ shared_module(
     '-DPK_COMPILATION',
     c_args,
     ddtp_flag,
+    # To avoid some errors on API change:
+    '-Werror=overloaded-virtual',
   ],
   link_args: [
     '-lutil',
