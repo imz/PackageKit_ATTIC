@@ -166,10 +166,10 @@ public:
     OpPackageKitProgress(PkBackendJob *job);
     virtual ~OpPackageKitProgress();
 
-    virtual void Done();
+    virtual void Done() override;
 
 protected:
-    virtual void Update();
+    virtual void Update() override;
 
 private:
     PkBackendJob  *m_job;
