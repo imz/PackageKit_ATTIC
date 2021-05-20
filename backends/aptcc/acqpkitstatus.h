@@ -45,7 +45,7 @@ public:
     virtual void Start() override;
     virtual void Stop() override;
 
-    bool Pulse(pkgAcquire *Owner);
+    bool Pulse(pkgAcquire *Owner) override;
 
 private:
     void updateStatus(pkgAcquire::ItemDesc & Itm, int status);
