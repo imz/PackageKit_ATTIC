@@ -2,6 +2,9 @@ AM_CPPFLAGS = \
 	-DDATADIR=\"$(datadir)\"		\
 	-DG_LOG_DOMAIN=\"PackageKit-APTcc\"
 
+# To avoid some errors on API change:
+AM_CPPFLAGS += -Werror=overloaded-virtual
+
 PK_GLIB2_LIBS =						\
 	$(top_builddir)/lib/packagekit-glib2/libpackagekit-glib2.la	\
 	$(top_builddir)/lib/packagekit-glib2/libpackagekitprivate.a
