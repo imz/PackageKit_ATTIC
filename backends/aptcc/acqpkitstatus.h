@@ -37,15 +37,15 @@ class AcqPackageKitStatus : public pkgAcquireStatus
 public:
     AcqPackageKitStatus(AptIntf *apt, PkBackendJob *job);
 
-    virtual bool MediaChange(string Media, string Drive);
-    virtual void IMSHit(pkgAcquire::ItemDesc &Itm);
-    virtual void Fetch(pkgAcquire::ItemDesc &Itm);
-    virtual void Done(pkgAcquire::ItemDesc &Itm);
-    virtual void Fail(pkgAcquire::ItemDesc &Itm);
-    virtual void Start();
-    virtual void Stop();
+    virtual bool MediaChange(string Media, string Drive) override;
+    virtual void IMSHit(pkgAcquire::ItemDesc &Itm) override;
+    virtual void Fetch(pkgAcquire::ItemDesc &Itm) override;
+    virtual void Done(pkgAcquire::ItemDesc &Itm) override;
+    virtual void Fail(pkgAcquire::ItemDesc &Itm) override;
+    virtual void Start() override;
+    virtual void Stop() override;
 
-    bool Pulse(pkgAcquire *Owner);
+    bool Pulse(pkgAcquire *Owner) override;
 
 private:
     void updateStatus(pkgAcquire::ItemDesc & Itm, int status);
