@@ -63,6 +63,8 @@ shared_module(
     ddtp_flag,
     # To avoid some errors on API change:
     '-Werror=overloaded-virtual',
+    # style enforcement: always use the keyword, which helps to avoid API misuse
+    '-Werror=suggest-override',
   ],
   link_args: [
     '-lutil',
