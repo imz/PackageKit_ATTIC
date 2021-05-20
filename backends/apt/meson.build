@@ -61,6 +61,8 @@ shared_module(
     '-DPK_COMPILATION=1',
     '-DDATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'))),
     ddtp_flag,
+    # To avoid some errors on API change:
+    '-Werror=overloaded-virtual',
   ],
   link_args: [
     '-lutil',
