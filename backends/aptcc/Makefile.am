@@ -5,6 +5,9 @@ AM_CPPFLAGS = \
 # To avoid some errors on API change:
 AM_CPPFLAGS += -Werror=overloaded-virtual
 
+# A style enforcement: always use the keyword, which helps to avoid API misuse
+AM_CPPFLAGS += -Werror=suggest-override
+
 PK_GLIB2_LIBS =						\
 	$(top_builddir)/lib/packagekit-glib2/libpackagekit-glib2.la	\
 	$(top_builddir)/lib/packagekit-glib2/libpackagekitprivate.a
