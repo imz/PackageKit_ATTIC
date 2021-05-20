@@ -2,6 +2,9 @@ AM_CPPFLAGS = \
 	-DDATADIR=\"$(datadir)\"		\
 	-DG_LOG_DOMAIN=\"PackageKit-APTcc\"
 
+# To avoid some errors on API change:
+AM_CPPFLAGS += -Werror=overloaded-virtual
+
 plugindir = $(PK_PLUGIN_DIR)
 plugin_LTLIBRARIES = libpk_backend_aptcc.la
 libpk_backend_aptcc_la_SOURCES = pkg-list.cpp \
