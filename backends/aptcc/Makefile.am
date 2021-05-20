@@ -5,6 +5,9 @@ AM_CPPFLAGS = \
 # To avoid some errors on API change:
 AM_CPPFLAGS += -Werror=overloaded-virtual
 
+# A style enforcement: always use the keyword, which helps to avoid API misuse
+AM_CPPFLAGS += -Werror=suggest-override
+
 plugindir = $(PK_PLUGIN_DIR)
 plugin_LTLIBRARIES = libpk_backend_aptcc.la
 libpk_backend_aptcc_la_SOURCES = pkg-list.cpp \
