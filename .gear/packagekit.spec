@@ -32,6 +32,11 @@ BuildRequires: libgtk+3-devel
 
 BuildRequires: boost-devel
 
+# It provides the stuff needed to run the APT backend: the download methods
+# (/usr/lib*/apt/methods/), conf files (/etc/apt/), and cache dirs
+# (/var/cache/apt/archives/).
+Requires: apt
+
 %add_findreq_skiplist  %_datadir/vala/vapi/*
 %add_findprov_skiplist %_datadir/vala/vapi/*
 
