@@ -145,6 +145,15 @@ touch %buildroot%_localstatedir/PackageKit/upgrade_lock
 
 %find_lang PackageKit
 
+# We have to choose against which executable to verify the symbols
+# in the backend modules. I've chosen the one that rarely gets to be used
+# (packagekit-direct), so that it receives more "testing" and problems like
+# https://github.com/PackageKit/PackageKit/issues/477 don't stay unnoticed.
+#export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekitd
+export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekit-direct
+export RPM_FILES_TO_LD_PRELOAD_packagekit='%_libdir/packagekit-backend/*.so'
+%set_verify_elf_method strict
+
 %post
 SYSTEMCTL=systemctl
 if sd_booted && "$SYSTEMCTL" --version >/dev/null 2>&1; then
