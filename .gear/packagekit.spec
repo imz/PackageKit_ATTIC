@@ -32,6 +32,11 @@ BuildRequires: libgtk+3-devel
 
 BuildRequires: boost-devel
 
+# It provides the stuff needed to run the APT backend: the download methods
+# (/usr/lib*/apt/methods/), conf files (/etc/apt/), and cache dirs
+# (/var/cache/apt/archives/).
+Requires: apt
+
 %description
 PackageKit is a D-Bus abstraction layer that allows the session user
 to manage packages in a secure way using a cross-distro,
