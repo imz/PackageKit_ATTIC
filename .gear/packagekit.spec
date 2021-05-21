@@ -8,7 +8,7 @@ License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
 
-# https://github.com/hughsie/PackageKit.git
+# https://github.com/PackageKit/PackageKit.git
 Source: %name-%version.tar
 Patch1: %name-%version-alt.patch
 
@@ -138,7 +138,7 @@ popd
 
 # enable packagekit-offline-updates.service here for now, till we
 # decide how to do it upstream after the meson conversion:
-# https://github.com/hughsie/PackageKit/issues/401
+# https://github.com/PackageKit/PackageKit/issues/401
 # https://bugzilla.redhat.com/show_bug.cgi?id=1833176
 mkdir -p %{buildroot}%{_unitdir}/system-update.target.wants/
 ln -sf ../packagekit-offline-update.service %{buildroot}%{_unitdir}/system-update.target.wants/packagekit-offline-update.service
