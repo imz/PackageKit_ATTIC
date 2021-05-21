@@ -8,7 +8,7 @@ License:   GPLv2+ and LGPLv2+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
 
-# https://github.com/hughsie/PackageKit.git
+# https://github.com/PackageKit/PackageKit.git
 Source: %name-%version.tar
 Patch1: %name-%version-alt.patch
 
