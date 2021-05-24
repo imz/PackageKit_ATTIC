@@ -3,7 +3,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.3
-Release:   alt1
+Release:   alt2
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -273,6 +273,10 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Mon May 24 2021 Ivan Zakharyaschev <imz@altlinux.org> 1.2.3-alt2
+- Fixed /usr/lib/packagekit-direct (that didn't work, because
+  it couldn't load the APT backend).
+
 * Thu Mar 25 2021 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.3-alt1
 - Updated to upstream version 1.2.3.
 
