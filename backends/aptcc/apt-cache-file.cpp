@@ -86,26 +86,26 @@ bool AptCacheFile::CheckDeps(bool AllowBroken)
     }
 
     // Check that the system is OK
-    if (DCache->DelCount() != 0 || DCache->InstCount() != 0) {
+    if (getDCache()->DelCount() != 0 || getDCache()->InstCount() != 0) {
         _error->Error("Internal error, non-zero counts");
         show_errors(m_job, PK_ERROR_ENUM_INTERNAL_ERROR);
         return false;
     }
 
     // Apply corrections for half-installed packages
-    if (pkgApplyStatus(*DCache) == false) {
+    if (pkgApplyStatus(*getDCache()) == false) {
         _error->Error("Unable to apply corrections for half-installed packages");;
         show_errors(m_job, PK_ERROR_ENUM_INTERNAL_ERROR);
         return false;
     }
 
     // Nothing is broken or we don't want to try fixing it
-    if (DCache->BrokenCount() == 0 || AllowBroken == true) {
+    if (getDCache()->BrokenCount() == 0 || AllowBroken == true) {
         return true;
     }
 
     // Attempt to fix broken things
-    if (pkgFixBroken(*DCache) == false || DCache->BrokenCount() != 0) {
+    if (pkgFixBroken(*getDCache()) == false || getDCache()->BrokenCount() != 0) {
         // We failed to fix the cache
         ShowBroken(true, PK_ERROR_ENUM_UNFINISHED_TRANSACTION);
 
@@ -113,7 +113,7 @@ bool AptCacheFile::CheckDeps(bool AllowBroken)
         return false;
     }
 
-    if (pkgMinimizeUpgrade(*DCache) == false) {
+    if (pkgMinimizeUpgrade(*getDCache()) == false) {
         g_warning("Unable to minimize the upgrade set");
         show_errors(m_job, PK_ERROR_ENUM_INTERNAL_ERROR);
         return false;
@@ -125,7 +125,7 @@ bool AptCacheFile::CheckDeps(bool AllowBroken)
 
 bool AptCacheFile::DistUpgrade()
 {
-    return pkgDistUpgrade(*DCache);
+    return pkgDistUpgrade(*getDCache());
 }
 
 void AptCacheFile::ShowBroken(bool Now, PkErrorEnum error)
@@ -273,7 +273,7 @@ void AptCacheFile::buildPkgRecords()
 
 bool AptCacheFile::doAutomaticRemove()
 {
-    pkgAutoremove(*DCache);
+    pkgAutoremove(*getDCache());
 
     // Now see if we destroyed anything
     if ((*this)->BrokenCount() != 0) {
