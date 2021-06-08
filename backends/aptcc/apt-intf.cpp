@@ -159,8 +159,11 @@ bool AptIntf::init(gchar **localDebs)
             timeout--;
         }
 
-        // Close the cache if we are going to try again
-        m_cache->Close();
+        // If we are going to try again, we can either simply try Open() once
+        // again (since pkgCacheFile is monotonic in creating required objects),
+        // or simply continue with a new pkgCacheFile object.
+        delete m_cache;
+        m_cache = new AptCacheFile(m_job);
     }
 
     // default settings
