@@ -42,11 +42,6 @@ public:
     bool Open(bool withLock = false);
 
     /**
-      * Closes the package cache
-      */
-    void Close();
-
-    /**
       * Build caches
       */
     bool BuildCaches(bool withLock = false);
