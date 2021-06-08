@@ -39,26 +39,19 @@ AptCacheFile::AptCacheFile(PkBackendJob *job) :
 
 AptCacheFile::~AptCacheFile()
 {
-    Close();
+    delete m_packageRecords;
+
+    m_packageRecords = 0;
+
+    // Discard all errors to avoid a future failure when opening
+    // the package cache
+    _error->Discard();
 }
 
 bool AptCacheFile::Open(bool withLock)
 {
     OpPackageKitProgress progress(m_job);
     return pkgCacheFile::Open(progress, withLock);
-}
-
-void AptCacheFile::Close()
-{
-    delete m_packageRecords;
-
-    m_packageRecords = 0;
-
-    pkgCacheFile::Close();
-
-    // Discard all errors to avoid a future failure when opening
-    // the package cache
-    _error->Discard();
 }
 
 bool AptCacheFile::BuildCaches(bool withLock)
