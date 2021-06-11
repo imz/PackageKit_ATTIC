@@ -153,7 +153,7 @@ private:
 };
 
 /**
- * This class is maent to show Operation Progress using PackageKit
+ * This class is meant to show Operation Progress using PackageKit
  */
 class OpPackageKitProgress : public OpProgress
 {
