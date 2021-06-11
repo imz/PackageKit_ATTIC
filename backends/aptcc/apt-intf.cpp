@@ -122,9 +122,6 @@ bool AptIntf::init(gchar **localDebs)
         withLock = !simulate;
     }
 
-    // Create the AptCacheFile class to search for packages
-    m_cache = new AptCacheFile(m_job);
-
     int timeout = 10;
     // TODO test this
     if (withLock) {
@@ -148,7 +145,9 @@ bool AptIntf::init(gchar **localDebs)
         }
     }
 
-    while (m_cache->Open(withLock) == false) {
+    // Create the AptCacheFile class to search for packages
+    m_cache = new AptCacheFile(m_job,withLock);
+    while (m_cache->Open() == false) {
         if (withLock == false || (timeout <= 0)) {
             show_errors(m_job, PK_ERROR_ENUM_CANNOT_GET_LOCK);
             return false;
@@ -166,7 +165,7 @@ bool AptIntf::init(gchar **localDebs)
         // Discard all errors to avoid a future failure when opening
         // the package cache
         _error->Discard();
-        m_cache = new AptCacheFile(m_job);
+        m_cache = new AptCacheFile(m_job,withLock);
     }
 
     // default settings
