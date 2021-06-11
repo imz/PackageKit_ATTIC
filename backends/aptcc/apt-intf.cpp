@@ -1702,12 +1702,21 @@ void AptIntf::refreshCache()
     ListUpdate(Stat, *m_cache->GetSourceList(), *m_cache);
 
     // Rebuild the cache.
+
+    // First, destroy m_cache which holds the old copy of the pkgCache and
+    // dependent objects. Note that BuildCaches() alone won't overwrite the held
+    // pkgCache if it's already computed (per Debian's current APT API).
+    delete m_cache;
+    m_cache = nullptr;
+
     pkgCacheFile::RemoveCaches();
-    // FIXME: I'm afraid this call to BuildCaches() has no effect, because
-    // before calling us (refreshCache()), pk_backend_refresh_cache_thread()
-    // would call init(), which would already have called m_cache->BuildCaches()
-    // and thus m_cache->Cache is non-null here and BuildCaches() does nothing.
-    // It would make sense to recreate m_cache here first. (Per Debian's APT.)
+
+    m_cache = new AptCacheFile(m_job, true /* withLock */);
+    // Setting WithLock implies not AllowMem in APT. (Building in memory only
+    // would be a waste of time for refreshCache(): nothing saved to disk.)
+    // So does apt-get update, too.
+
+    // Ultimately, force the cache to be computed.
     if (m_cache->BuildCaches() == false) {
         return;
     }
