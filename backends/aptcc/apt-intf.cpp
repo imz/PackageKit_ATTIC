@@ -1703,6 +1703,11 @@ void AptIntf::refreshCache()
 
     // Rebuild the cache.
     pkgCacheFile::RemoveCaches();
+    // FIXME: I'm afraid this call to BuildCaches() has no effect, because
+    // before calling us (refreshCache()), pk_backend_refresh_cache_thread()
+    // would call init(), which would already have called m_cache->BuildCaches()
+    // and thus m_cache->Cache is non-null here and BuildCaches() does nothing.
+    // It would make sense to recreate m_cache here first. (Per Debian's APT.)
     if (m_cache->BuildCaches() == false) {
         return;
     }
