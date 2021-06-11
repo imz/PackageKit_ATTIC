@@ -33,18 +33,18 @@ class pkgProblemResolver;
 class AptCacheFile : public pkgCacheFile
 {
 public:
-    AptCacheFile(PkBackendJob *job);
+    AptCacheFile(PkBackendJob *job, bool withLock);
     ~AptCacheFile();
 
     /**
       * Inits the package cache returning false if it can't open
       */
-    bool Open(bool withLock = false);
+    bool Open();
 
     /**
       * Build caches
       */
-    bool BuildCaches(bool withLock = false);
+    bool BuildCaches();
 
     /**
       * This routine generates the caches and then opens the dependency cache
