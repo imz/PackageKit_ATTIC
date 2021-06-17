@@ -262,6 +262,9 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Thu Jun 17 2021 Ivan Zakharyaschev <imz@altlinux.org> 1.1.13-alt1.p9.1
+- Updated to upstream version 1.1.13 (the latest version in 1_1_X branch).
+
 * Mon May 24 2021 Ivan Zakharyaschev <imz@altlinux.org> 1.1.12-alt12.p9.1
 - Fixed /usr/lib/packagekit-direct (that didn't work, because
   it couldn't load the APT backend). (Backported 1.2.3-alt2's changes.)
