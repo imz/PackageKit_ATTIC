@@ -4,8 +4,8 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.3
-Release:   alt3
+Version:   1.2.4
+Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -286,6 +286,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Mon Aug 02 2021 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.4-alt1
+- Updated to upstream version 1.2.4.
+
 * Wed Jun 16 2021 Ivan Zakharyaschev <imz@altlinux.org> 1.2.3-alt3
 - Adapted to changed API in apt-0.5.15lorg2-alt72
   (pkgCacheFile class in RAII style).
