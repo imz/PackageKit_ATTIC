@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.4
-Release:   alt1
+Release:   alt2
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -110,6 +110,10 @@ Python3 backend for PackageKit.
 %prep
 %setup
 %patch1 -p1
+%ifarch %e2k
+# workaround for EDG frontend
+sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/aptcc/apt-{utils,intf}.cpp
+%endif
 
 %build
 %ifnarch %e2k
@@ -286,6 +290,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Thu Sep 16 2021 Ilya Kurdyukov <ilyakurdyukov@altlinux.org> 1.2.4-alt2
+- Fixes for Elbrus build.
+
 * Mon Aug 02 2021 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.4-alt1
 - Updated to upstream version 1.2.4.
 
