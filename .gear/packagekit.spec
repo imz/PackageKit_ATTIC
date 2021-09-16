@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.4
-Release:   alt1
+Release:   alt2
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -110,6 +110,23 @@ Python3 backend for PackageKit.
 %prep
 %setup
 %patch1 -p1
+%ifarch %e2k
+# workaround for EDG frontend
+sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/apt/apt-{utils,job}.cpp
+
+# Explanation: The workaround is needed only for C++:
+#
+# lcc: "/usr/include/glib-2.0/glib/gmacros.h", line 1365: warning #3330:
+#           attribute "cleanup" is not yet supported in C++ mode
+#           [-Wignored-attribute-cleanup]
+#     __attribute__((cleanup(func))) \
+#                    ^
+#  in expansion of macro "_GLIB_CLEANUP" at line 1473
+#  in expansion of macro "g_autofree" at line 755 of
+#
+# Let's catch the missed problems:
+%add_optflags -Werror=ignored-attribute-cleanup
+%endif
 
 %build
 %add_optflags -D_FILE_OFFSET_BITS=64
@@ -281,6 +298,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Thu Sep 16 2021 Ilya Kurdyukov <ilyakurdyukov@altlinux.org> 1.2.4-alt2
+- Fixes for Elbrus build.
+
 * Mon Aug 02 2021 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.4-alt1
 - Updated to upstream version 1.2.4.
 
