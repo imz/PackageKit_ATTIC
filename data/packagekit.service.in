@@ -6,10 +6,10 @@ Description=PackageKit Daemon
 ConditionPathExists=!/run/ostree-booted
 # PK shouldn't run while librpm is updated
 ConditionPathExists=!/var/lib/PackageKit/upgrade_lock
+Wants=network-online.target
 
 [Service]
 Type=dbus
 BusName=org.freedesktop.PackageKit
 User=@PACKAGEKIT_USER@
 ExecStart=@libexecdir@/packagekitd
-Wants=network-online.target
