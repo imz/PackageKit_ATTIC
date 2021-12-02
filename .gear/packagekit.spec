@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.4
-Release:   alt2
+Release:   alt3
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -298,6 +298,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Thu Dec 02 2021 Oleg Solovyov <mcpain@altlinux.org> 1.2.4-alt3
+- Show actual update percentage during offline update
+
 * Thu Sep 16 2021 Ilya Kurdyukov <ilyakurdyukov@altlinux.org> 1.2.4-alt2
 - Fixes for Elbrus build.
 
