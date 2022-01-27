@@ -38,16 +38,17 @@
 #include "apt-sourceslist.h"
 #include "apt-cache-file.h"
 
+#include <memory>
+
 #define REBOOT_REQUIRED      "/var/run/reboot-required"
 
 class pkgProblemResolver;
 class Matcher;
-class AptCacheFile;
 class AptIntf
 {
 public:
     AptIntf(PkBackendJob *job);
-    ~AptIntf();
+    ~AptIntf() = default;
 
     bool init(gchar **localDebs = nullptr);
     void cancel();
@@ -236,7 +237,7 @@ private:
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);
 
-    AptCacheFile *m_cache;
+    std::unique_ptr<AptCacheFile> m_cache;
     PkBackendJob  *m_job;
     bool       m_cancel;
     struct stat m_restartStat;
