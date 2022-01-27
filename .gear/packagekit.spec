@@ -1,6 +1,7 @@
 %define _unpackaged_files_terminate_build 1
 %define _stripped_files_terminate_build 1
 %set_verify_elf_method strict
+# it's also needed for RPM_LD_PRELOAD_packagekit to work (see below).
 
 Summary:   Package management service
 Name:      packagekit
@@ -178,7 +179,7 @@ install -m 0755 %SOURCE2 %buildroot%_sysconfdir/NetworkManager/dispatcher.d/pre-
 #export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekitd
 export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekit-direct
 export RPM_FILES_TO_LD_PRELOAD_packagekit='%_libdir/packagekit-backend/*.so'
-%set_verify_elf_method strict
+# To rely on this feature, one should have set_verify_elf_method strict
 
 %post
 SYSTEMCTL=systemctl
