@@ -63,7 +63,6 @@
 #define RAMFS_MAGIC     0x858458f6
 
 AptIntf::AptIntf(PkBackendJob *job) :
-    m_cache(0),
     m_job(job),
     m_cancel(false),
     m_lastSubProgress(0),
@@ -146,7 +145,7 @@ bool AptIntf::init(gchar **localDebs)
     }
 
     // Create the AptCacheFile class to search for packages
-    m_cache = new AptCacheFile(m_job, withLock, &m_progress);
+    m_cache.reset(new AptCacheFile(m_job, withLock, &m_progress));
     while (m_cache->Open() == false) {
         if (withLock == false || (timeout <= 0)) {
             show_errors(m_job, PK_ERROR_ENUM_CANNOT_GET_LOCK);
@@ -161,8 +160,7 @@ bool AptIntf::init(gchar **localDebs)
         // If we are going to try again, we can either simply try Open() once
         // again (since pkgCacheFile is monotonic in creating required objects),
         // or simply continue with a new pkgCacheFile object.
-        delete m_cache;
-        m_cache = new AptCacheFile(m_job, withLock, &m_progress);
+        m_cache.reset(new AptCacheFile(m_job, withLock, &m_progress));
     }
 
     // default settings
@@ -180,11 +178,6 @@ bool AptIntf::init(gchar **localDebs)
 
     // Check if there are half-installed packages and if we can fix them
     return m_cache->CheckDeps(AllowBroken);
-}
-
-AptIntf::~AptIntf()
-{
-    delete m_cache;
 }
 
 void AptIntf::setEnvLocaleFromJob()
@@ -683,7 +676,7 @@ bool AptIntf::getArchive(pkgAcquire *Owner,
 
 AptCacheFile* AptIntf::aptCacheFile() const
 {
-    return m_cache;
+    return m_cache.get();
 }
 
 // used to emit packages it collects all the needed info
@@ -1655,6 +1648,17 @@ void AptIntf::refreshCache()
 {
     pk_backend_job_set_status(m_job, PK_STATUS_ENUM_REFRESH_CACHE);
 
+    // Rebuild the cache.
+
+    // First, destroy m_cache which holds the old copy of the pkgCache and
+    // dependent objects. Note that BuildCaches() alone won't overwrite the held
+    // pkgCache if it's already computed (per Debian's current APT API).
+    m_cache.reset();
+
+    pkgCacheFile::RemoveCaches();
+
+    m_cache.reset(new AptCacheFile(m_job, true /* withLock */, &m_progress));
+
     if (m_cache->BuildSourceList() == false) {
         return;
     }
@@ -1665,17 +1669,6 @@ void AptIntf::refreshCache()
     // do the work
     ListUpdate(Stat, *m_cache->GetSourceList(), *m_cache);
 
-    // Rebuild the cache.
-
-    // First, destroy m_cache which holds the old copy of the pkgCache and
-    // dependent objects. Note that BuildCaches() alone won't overwrite the held
-    // pkgCache if it's already computed (per Debian's current APT API).
-    delete m_cache;
-    m_cache = nullptr;
-
-    pkgCacheFile::RemoveCaches();
-
-    m_cache = new AptCacheFile(m_job, true /* withLock */, &m_progress);
     // Setting WithLock implies not AllowMem in APT. (Building in memory only
     // would be a waste of time for refreshCache(): nothing saved to disk.)
     // So does apt-get update, too.
