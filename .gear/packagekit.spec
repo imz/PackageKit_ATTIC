@@ -5,8 +5,8 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.4
-Release:   alt5
+Version:   1.2.5
+Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -299,6 +299,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Thu Feb 24 2022 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.5-alt1
+- Updated to upstream version 1.2.5.
+
 * Thu Jan 27 2022 Aleksei Nikiforov <darktemplar@altlinux.org> 1.2.4-alt5
 - Reworked refresh action.
 
