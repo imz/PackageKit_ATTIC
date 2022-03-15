@@ -5,7 +5,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.5
-Release:   alt2
+Release:   alt3
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -290,6 +290,10 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Tue Mar 15 2022 Oleg Solovyov <mcpain@altlinux.org> 1.2.5-alt3
+- Fix package for dependent builds
+- Restart service before connecting to network
+
 * Mon Mar 14 2022 Oleg Solovyov <mcpain@altlinux.org> 1.2.5-alt2
 - Avoid restarting via 'pkcon quit'
 - Break circular dependencies between packagekit and libpackagekit-glib
