@@ -12,6 +12,7 @@ URL:       http://www.freedesktop.org/software/PackageKit/
 
 # https://github.com/PackageKit/PackageKit.git
 Source: %name-%version.tar
+Source2: packagekit.sh
 Patch1: %name-%version-alt.patch
 
 BuildRequires(pre): rpm-build-python3
@@ -165,6 +166,9 @@ rm -f %buildroot%_datadir/PackageKit/helpers/aptcc/pkconffile.nodiff
 
 touch %buildroot%_localstatedir/PackageKit/upgrade_lock
 
+mkdir -p %buildroot%_sysconfdir/NetworkManager/dispatcher.d/pre-up.d/
+install -m 0755 %SOURCE2 %buildroot%_sysconfdir/NetworkManager/dispatcher.d/pre-up.d/
+
 %find_lang PackageKit
 
 # We have to choose against which executable to verify the symbols
@@ -247,6 +251,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %config %_sysconfdir/apt/apt.conf.d/20packagekit
 %_libdir/packagekit-backend/libpk_backend_aptcc.so
 %_libexecdir/pk-invoke-filetriggers.sh
+%_sysconfdir/NetworkManager/dispatcher.d/pre-up.d/packagekit.sh
 
 %files -n lib%name-glib
 %_libdir/*packagekit-glib2.so.*
