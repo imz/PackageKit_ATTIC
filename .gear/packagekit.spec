@@ -240,7 +240,6 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %ghost %verify(not md5 size mtime) %_localstatedir/PackageKit/transactions.db
 %ghost %_localstatedir/PackageKit/upgrade_lock
 %_datadir/dbus-1/system-services/*.service
-%_datadir/dbus-1/interfaces/*.xml
 %_unitdir/packagekit-offline-update.service
 %_unitdir/packagekit.service
 %_unitdir/system-update.target.wants/
@@ -276,6 +275,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %dir %_includedir/PackageKit
 %dir %_includedir/PackageKit/packagekit-glib2
 %_includedir/PackageKit/packagekit-glib*/*.h
+%_datadir/dbus-1/interfaces/*.xml
 %_datadir/gir-1.0/PackageKitGlib-1.0.gir
 %_datadir/gtk-doc/html/PackageKit
 %_datadir/vala/vapi/packagekit-glib2.vapi
