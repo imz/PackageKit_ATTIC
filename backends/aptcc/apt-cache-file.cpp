@@ -415,25 +415,15 @@ PkgInfo AptCacheFile::resolvePkgID(const gchar *packageId)
 
 gchar *AptCacheFile::buildPackageId(const pkgCache::VerIterator &ver)
 {
+    string data;
     pkgCache::VerFileIterator vf = ver.FileList();
     const pkgCache::PkgIterator &pkg = ver.ParentPkg();
-    pkgDepCache::StateCache &State = (*this)[pkg];
-
-    const bool isInstalled = (pkg->CurrentState == pkgCache::State::Installed && pkg.CurrentVer() == ver);
-    const bool isAuto = (State.CandidateVer != 0) && (State.Flags & pkgCache::Flag::Auto);
-
-    // when a package is installed manually, the data part of a package-id is "manual:<repo-id>",
-    // otherwise it is "auto:<repo-id>". Available (not installed) packages have no prefix, unless
-    // a pending installation is marked, in which case we prefix the desired new mode of the installed
-    // package (auto/manual) with a plus sign (+).
-    string data = "";
-    if (isInstalled) {
-        data = isAuto? "auto:" : "manual:";
+    if (pkg->CurrentState == pkgCache::State::Installed && pkg.CurrentVer() == ver) {
+        // when a package is installed, the data part of a package-id is "installed:<repo-id>"
+        data = "installed:" + utilBuildPackageOriginId(vf);
     } else {
-        if (State.NewInstall())
-            data = isAuto? "+auto:" : "+manual:";
+        data = utilBuildPackageOriginId(vf);
     }
-    data += utilBuildPackageOriginId(vf);
 
     return pk_package_id_build(ver.ParentPkg().Name(),
                                ver.VerStr(),
