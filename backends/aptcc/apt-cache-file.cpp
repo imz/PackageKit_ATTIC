@@ -528,7 +528,7 @@ bool AptCacheFile::tryToInstall(pkgProblemResolver &Fix,
     //   We probably should change the return value behavior and have the callee decide whether to
     //   error out or call us again with autoinst. This however is further complicated by us
     //   having protected, so we'd have to lift protection before this?
-    GetDepCache()->MarkInstall(Pkg, (fromUser ? pkgDepCache::AutoMarkFlag::Manual : pkgDepCache::AutoMarkFlag::Auto), autoInst, 0);
+    GetDepCache()->MarkInstall(Pkg, (fromUser ? pkgDepCache::AutoMarkFlag::Manual : pkgDepCache::AutoMarkFlag::Auto), autoInst);
     // Protect against further resolver changes.
     Fix.Clear(Pkg);
     Fix.Protect(Pkg);
