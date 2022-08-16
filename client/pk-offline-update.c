@@ -35,6 +35,32 @@
 #include <systemd/sd-journal.h>
 
 static void
+pk_offline_update_create_snapshot ()
+{
+	g_autoptr(GError) error = NULL;
+	g_autofree gchar *cmdargv = NULL;
+	g_autofree gchar *cmdline = NULL;
+	gint exit_status;
+
+	cmdargv = g_find_program_in_path ("timeshift");
+	if (cmdargv == NULL) {
+		sd_journal_print (LOG_WARNING, "timeshift not found");
+		return;
+	}
+
+	/* --btrfs is an one-shot option, if using rsync mode, it won't change */
+	cmdline = g_strdup_printf ("timeshift --btrfs --create --comments \"%s\"", "Before Offline Update");
+
+	/* Intentional, package DB should be intact until snapshot is created */
+	g_spawn_command_line_sync (cmdline, NULL, NULL, &exit_status, &error);
+	if (!exit_status) {
+		sd_journal_print (LOG_WARNING, "failed to create snapshot");
+	} else {
+		sd_journal_print (LOG_INFO, "Created pre-update snapshot via timeshift");
+	}
+}
+
+static void
 pk_offline_update_set_plymouth_msg (const gchar *msg)
 {
 	g_autoptr(GError) error = NULL;
@@ -521,6 +547,8 @@ main (int argc, char *argv[])
 
 	task = pk_task_new ();
 	pk_client_set_interactive (PK_CLIENT (task), FALSE);
+
+	pk_offline_update_create_snapshot ();
 
 	if (g_strcmp0 (link, PK_OFFLINE_PREPARED_UPGRADE_FILENAME) == 0 &&
 	    g_file_test (PK_OFFLINE_PREPARED_UPGRADE_FILENAME, G_FILE_TEST_EXISTS)) {
