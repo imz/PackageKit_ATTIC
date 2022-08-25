@@ -6,7 +6,7 @@
 Summary:   Package management service
 Name:      packagekit
 Version:   1.2.5
-Release:   alt6
+Release:   alt7
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -292,6 +292,11 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Wed Aug 24 2022 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5-alt7
+- Rewritten a tiny piece of code to fix build with lcc.
+- Adapted to ALT's apt API a bit further by dropping an unused parameter of
+  MarkInstall(). (In apt, it either has a default value or will be eliminated.)
+
 * Wed Aug 17 2022 Oleg Solovyov <mcpain@altlinux.org> 1.2.5-alt6
 - offline-update: create btrfs snapshot via timeshift before committing changes
 
