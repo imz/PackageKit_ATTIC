@@ -1405,7 +1405,7 @@ void AptIntf::updateInterface(int fd, int writeFd, bool *errorEmitted)
             const gchar *status   = g_strstrip(split[0]);
             const gchar *pkg      = g_strstrip(split[1]);
             const gchar *percent  = g_strstrip(split[2]);
-            g_autofree gchar *str = g_strdup(g_strstrip(split[3]));
+            const std::string str = g_strstrip(split[3]);
 
             // major problem here, we got unexpected input. should _never_ happen
             if(pkg == nullptr && status == nullptr)
@@ -1428,7 +1428,7 @@ void AptIntf::updateInterface(int fd, int writeFd, bool *errorEmitted)
                 pk_backend_job_error_code(m_job,
                                           PK_ERROR_ENUM_PACKAGE_FAILED_TO_INSTALL,
                                           "Error while installing package: %s",
-                                          str);
+                                          str.c_str());
             } else if (strstr(status, "pmstatus") != NULL) {
                 // INSTALL & UPDATE
                 // - Running dpkg
