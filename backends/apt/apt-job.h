@@ -234,10 +234,6 @@ private:
     void setEnvLocaleFromJob();
     bool matchesQueries(const vector<string> &queries, string s);
 
-    /**
-     *  interprets dpkg status fd
-     */
-    void updateInterface(int readFd, int writeFd);
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);
 
