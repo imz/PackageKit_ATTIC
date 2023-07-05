@@ -238,10 +238,6 @@ private:
                              PkInfoEnum state = PK_INFO_ENUM_UNKNOWN,
                              PkInfoEnum updateSeverity = PK_INFO_ENUM_UNKNOWN);
 
-    /**
-     *  interprets dpkg status fd
-     */
-    void updateInterface(int readFd, int writeFd);
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);
 
