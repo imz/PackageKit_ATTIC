@@ -234,10 +234,6 @@ private:
                              PkInfoEnum updateSeverity = PK_INFO_ENUM_UNKNOWN) const;
     void stageUpdateDetail(GPtrArray *updateArray, const pkgCache::VerIterator &candver);
 
-    /**
-     *  interprets dpkg status fd
-     */
-    void updateInterface(int readFd, int writeFd);
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);
 
