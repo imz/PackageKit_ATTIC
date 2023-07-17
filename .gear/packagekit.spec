@@ -291,6 +291,19 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %files -n python3-module-%name
 %python3_sitelibdir_noarch/*
 
+
+%package checkinstall
+Summary: Immediately test PK when installing this package
+Group: Other
+BuildArch: noarch
+Requires: apt-under-pkdirect-checkinstall
+
+%description checkinstall
+Immediately test PackageKit when installing this package.
+
+%files checkinstall
+
+
 %changelog
 * Mon Jul 17 2023 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.30-alt1
 - Build PACKAGEKIT_1_2_5-30-g8957e9e49 with a fix for
