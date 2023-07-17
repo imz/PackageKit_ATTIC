@@ -5,8 +5,8 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.5
-Release:   alt7
+Version:   1.2.5.0.0.30
+Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -292,6 +292,10 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Mon Jul 17 2023 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.30-alt1
+- Build PACKAGEKIT_1_2_5-30-g8957e9e49 with a fix for
+  https://github.com/PackageKit/PackageKit/issues/539 (random crash).
+
 * Wed Aug 24 2022 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5-alt7
 - Rewritten a tiny piece of code to fix build with lcc.
 - Adapted to ALT's apt API a bit further by dropping an unused parameter of
