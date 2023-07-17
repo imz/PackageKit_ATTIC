@@ -258,6 +258,19 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %files -n python3-module-%name
 %python3_sitelibdir_noarch/*
 
+
+%package checkinstall
+Summary: Immediately test PK when installing this package
+Group: Other
+BuildArch: noarch
+Requires: apt-under-pkdirect-checkinstall
+
+%description checkinstall
+Immediately test PackageKit when installing this package.
+
+%files checkinstall
+
+
 %changelog
 * Wed Feb 06 2019 Aleksei Nikiforov <darktemplar@altlinux.org> 1.1.12-alt5
 - Fixed crash during showing errors.
