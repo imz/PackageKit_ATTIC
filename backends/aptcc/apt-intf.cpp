@@ -37,6 +37,8 @@
 
 #include <appstream.h>
 
+#include <boost/scope_exit.hpp>
+
 #include <sys/prctl.h>
 #include <sys/statvfs.h>
 #include <sys/statfs.h>
@@ -1237,11 +1239,15 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
         return output;
     }
 
+    BOOST_SCOPE_EXIT( (&re) )
+    {
+        regfree(&re);
+    } BOOST_SCOPE_EXIT_END;
+
     DIR *dp;
     struct dirent *dirp;
     if (!(dp = opendir("/var/lib/dpkg/info/"))) {
         g_debug ("Error opening /var/lib/dpkg/info/\n");
-        regfree(&re);
         return output;
     }
 
@@ -1269,7 +1275,6 @@ PkgList AptIntf::searchPackageFiles(gchar **values)
         }
     }
     closedir(dp);
-    regfree(&re);
 
     // Resolve the package names now
     for (const string &name : packages) {
@@ -1481,6 +1486,11 @@ void AptIntf::emitPackageFiles(const gchar *pi)
 
     parts = pk_package_id_split(pi);
 
+    BOOST_SCOPE_EXIT( (&parts) )
+    {
+        g_strfreev(parts);
+    } BOOST_SCOPE_EXIT_END;
+
     string fName;
     fName = "/var/lib/dpkg/info/" +
             string(parts[PK_PACKAGE_ID_NAME]) +
@@ -1493,7 +1503,6 @@ void AptIntf::emitPackageFiles(const gchar *pi)
                 string(parts[PK_PACKAGE_ID_NAME]) +
                 ".list";
     }
-    g_strfreev (parts);
 
     if (FileExists(fName)) {
         ifstream in(fName.c_str());
@@ -1502,6 +1511,12 @@ void AptIntf::emitPackageFiles(const gchar *pi)
         }
 
         files = g_ptr_array_new_with_free_func(g_free);
+
+        BOOST_SCOPE_EXIT( (&files) )
+        {
+            g_ptr_array_unref(files);
+        } BOOST_SCOPE_EXIT_END;
+
         while (in.eof() == false) {
             getline(in, line);
             if (!line.empty()) {
@@ -1513,7 +1528,6 @@ void AptIntf::emitPackageFiles(const gchar *pi)
             g_ptr_array_add(files, NULL);
             pk_backend_job_files(m_job, pi, (gchar **) files->pdata);
         }
-        g_ptr_array_unref(files);
     }
 }
 
