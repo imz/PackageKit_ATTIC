@@ -37,6 +37,8 @@
 
 #include <appstream.h>
 
+#include <boost/scope_exit.hpp>
+
 #include <sys/prctl.h>
 #include <sys/statvfs.h>
 #include <sys/statfs.h>
@@ -1224,11 +1226,15 @@ PkgList AptJob::searchPackageFiles(gchar **values)
         return output;
     }
 
+    BOOST_SCOPE_EXIT( (&re) )
+    {
+        regfree(&re);
+    } BOOST_SCOPE_EXIT_END;
+
     DIR *dp;
     struct dirent *dirp;
     if (!(dp = opendir("/var/lib/dpkg/info/"))) {
         g_debug ("Error opening /var/lib/dpkg/info/\n");
-        regfree(&re);
         return output;
     }
 
@@ -1256,7 +1262,6 @@ PkgList AptJob::searchPackageFiles(gchar **values)
         }
     }
     closedir(dp);
-    regfree(&re);
 
     // Resolve the package names now
     for (const string &name : packages) {
@@ -1466,6 +1471,7 @@ void AptJob::emitPackageFiles(const gchar *pi)
     string line;
 
     g_auto(GStrv) parts = pk_package_id_split(pi);
+
     string fName;
     fName = "/var/lib/dpkg/info/" +
             string(parts[PK_PACKAGE_ID_NAME]) +
@@ -1486,6 +1492,12 @@ void AptJob::emitPackageFiles(const gchar *pi)
         }
 
         files = g_ptr_array_new_with_free_func(g_free);
+
+        BOOST_SCOPE_EXIT( (&files) )
+        {
+            g_ptr_array_unref(files);
+        } BOOST_SCOPE_EXIT_END;
+
         while (in.eof() == false) {
             getline(in, line);
             if (!line.empty()) {
@@ -1497,7 +1509,6 @@ void AptJob::emitPackageFiles(const gchar *pi)
             g_ptr_array_add(files, NULL);
             pk_backend_job_files(m_job, pi, (gchar **) files->pdata);
         }
-        g_ptr_array_unref(files);
     }
 }
 
