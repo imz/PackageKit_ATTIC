@@ -439,6 +439,12 @@ string utilBuildPackageOriginId(pkgCache::VerFileIterator vf)
     std::transform(origin.begin(), origin.end(), origin.begin(), ::tolower);
     origin = std::regex_replace(origin, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
 
+    std::transform(suite.begin(), suite.end(), suite.begin(), ::tolower);
+    suite = std::regex_replace(suite, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+
+    std::transform(component.begin(), component.end(), component.begin(), ::tolower);
+    component = std::regex_replace(component, std::regex("[[:space:][:cntrl:][:punct:]]+"), "_");
+
     string res = origin + "-" + suite + "-" + component;
     return res;
 }
