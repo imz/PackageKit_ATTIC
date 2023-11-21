@@ -1417,8 +1417,6 @@ void AptIntf::updateInterface(int fd, int writeFd, bool *errorEmitted)
                                           PK_ERROR_ENUM_PACKAGE_FAILED_TO_INSTALL,
                                           "Error while installing package: %s",
                                           str.c_str());
-                if (errorEmitted != nullptr)
-                    *errorEmitted = true;
             } else if (strstr(status, "pmstatus") != NULL) {
                 // INSTALL & UPDATE
                 // - Running dpkg
