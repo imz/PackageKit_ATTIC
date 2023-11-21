@@ -1372,7 +1372,7 @@ pkgCache::VerIterator AptJob::findTransactionPackage(const std::string &name)
     return candidateVer;
 }
 
-void AptJob::updateInterface(int fd, int writeFd, bool *errorEmitted)
+void AptJob::updateInterface(int fd, int writeFd)
 {
     char buf[2];
     static char line[1024] = "";
@@ -1422,8 +1422,6 @@ void AptJob::updateInterface(int fd, int writeFd, bool *errorEmitted)
                                           PK_ERROR_ENUM_PACKAGE_FAILED_TO_INSTALL,
                                           "Error while installing package: %s",
                                           str.c_str());
-                if (errorEmitted != nullptr)
-                    *errorEmitted = true;
             } else if (strstr(status, "pmstatus") != NULL) {
                 // INSTALL & UPDATE
                 // - Running dpkg
@@ -2032,7 +2030,6 @@ bool AptJob::installPackages(PkBitfield flags)
     int ret = 0;
     char masterbuf[1024];
     std::string errorLogTail = "";
-    bool errorEmitted = false;
     bool childTerminated = false;
     while (true) {
         while (true) {
@@ -2050,7 +2047,7 @@ bool AptJob::installPackages(PkBitfield flags)
             break;
 
         // try to parse dpkg status
-        updateInterface(readFromChildFD[0], pty_master, &errorEmitted);
+        updateInterface(readFromChildFD[0], pty_master);
 
         // Check if the child died
         if (waitpid(m_child_pid, &ret, WNOHANG) != 0)
@@ -2063,7 +2060,7 @@ bool AptJob::installPackages(PkBitfield flags)
 
     cout << "apt-backend parent process finished: " << ret << endl;
 
-    if (ret != 0 && !m_cancel && !errorEmitted) {
+    if (ret != 0 && !m_cancel) {
         // If the child died with a non-zero exit code, and we didn't deliberately
         // kill it in a cancel operation and we didn't already emit an error,
         // we still need to find out what went wrong to present a message to the user.
