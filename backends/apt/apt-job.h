@@ -232,7 +232,7 @@ private:
     /**
      *  interprets dpkg status fd
      */
-    void updateInterface(int readFd, int writeFd, bool *errorEmitted = nullptr);
+    void updateInterface(int readFd, int writeFd);
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);
 
