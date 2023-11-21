@@ -251,16 +251,22 @@ bool AptJob::matchPackage(const pkgCache::VerIterator &ver, PkBitfield filters)
             // if ver.end() means unknow
             // strcmp will be true when it's different than devel
             std::string pkgName = pkg.Name();
-            if (!ends_with(pkgName, "-dev") &&
-                    !ends_with(pkgName, "-dbg") &&
+            if (!ends_with(pkgName, "-devel") &&
+                    !ends_with(pkgName, "-devel-static") &&
+                    !ends_with(pkgName, "-debuginfo") &&
+                    !ends_with(pkgName, "-checkinstall") &&
+                // TODO: also check ALT's rpm groups and ALT's repo components
                     section.compare("devel") &&
                     section.compare("libdevel")) {
                 return false;
             }
         } else if (pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_DEVELOPMENT)) {
             std::string pkgName = pkg.Name();
-            if (ends_with(pkgName, "-dev") ||
-                    ends_with(pkgName, "-dbg") ||
+            if (ends_with(pkgName, "-devel") ||
+                    ends_with(pkgName, "-devel-static") ||
+                    ends_with(pkgName, "-debuginfo") ||
+                    ends_with(pkgName, "-checkinstall") ||
+                // TODO: also check ALT's rpm groups and ALT's repo components
                     !section.compare("devel") ||
                     !section.compare("libdevel")) {
                 return false;
@@ -543,7 +549,7 @@ void AptJob::providesCodec(PkgList &output, gchar **values)
 
         // Ignore debug packages - these aren't interesting as codec providers,
         // but they do have apt GStreamer-* metadata.
-        if (ends_with (pkg.Name(), "-dbg") || ends_with (pkg.Name(), "-dbgsym")) {
+        if (ends_with (pkg.Name(), "-debuginfo") || ends_with (pkg.Name(), "-dbgsym")) {
             continue;
         }
 
