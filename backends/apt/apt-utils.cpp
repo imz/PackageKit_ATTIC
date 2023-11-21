@@ -429,12 +429,14 @@ string utilBuildPackageOriginId(pkgCache::VerFileIterator vf)
     //    seem a problem though. we'll allow them until otherwise indicated
     auto component = string(vf.File().Component());
 
+    // Don't repeat the "ALT Linux" prefix both in Origin and Suite,
+    // and shorten this Origin.
     if ((strcasecmp(origin.c_str(), "ALT Linux Team") == 0)
         && (strncasecmp(suite.c_str(), "ALT Linux ", strlen("ALT Linux ")) == 0)
         && (suite.length() > strlen("ALT Linux ")))
     {
-       std::string res = suite + " (" + component + ")";
-       return res;
+        suite = suite.substr(strlen("ALT Linux "));
+        origin = "ALT Linux";
     }
 
     // Origin is defined as 'a single line of free form text'.
