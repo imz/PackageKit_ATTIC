@@ -1229,7 +1229,7 @@ void AptJob::providesMimeType(PkgList &output, gchar **values)
         if (m_cancel)
             break;
 
-        result = as_pool_get_components_by_provided_item (pool, AS_PROVIDED_KIND_MIMETYPE, values[i]);
+        result = as_pool_get_components_by_provided_item (pool, AS_PROVIDED_KIND_MEDIATYPE, values[i]);
         for (j = 0; j < result->len; j++) {
             AsComponent *cpt = AS_COMPONENT (g_ptr_array_index (result, j));
             /* we only select one package per component - on Debian systems, AppStream components never reference multiple packages */
