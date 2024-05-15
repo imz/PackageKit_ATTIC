@@ -431,13 +431,14 @@ string utilBuildPackageOriginId(pkgCache::VerFileIterator vf)
 
     // Don't repeat the "ALT Linux" prefix both in Origin and Suite,
     // and shorten this Origin.
-    static const char ALT_Linux_[] = "ALT Linux ";
+    static constexpr char ALT_Linux_[] = "ALT Linux ";
+    static constexpr size_t len_ALT_Linux_ = sizeof ALT_Linux_ - 1;
     if ((strcasecmp(origin.c_str(), "ALT Linux Team") == 0)
-        && (strncasecmp(suite.c_str(), ALT_Linux_, strlen(ALT_Linux_)) == 0)
-        && (suite.length() > strlen(ALT_Linux_)))
+        && (strncasecmp(suite.c_str(), ALT_Linux_, len_ALT_Linux_) == 0)
+        && (suite.length() > len_ALT_Linux_))
     {
-        suite = suite.substr(strlen(ALT_Linux_));
-        origin = std::string(ALT_Linux_, 0, strlen(ALT_Linux_)-1);
+        suite = suite.substr(len_ALT_Linux_);
+        origin = std::string(ALT_Linux_, 0, len_ALT_Linux_-1);
     }
 
     // Origin is defined as 'a single line of free form text'.
