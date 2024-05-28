@@ -2,8 +2,8 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.1.13
-Release:   alt1.p9.1
+Version:   1.1.13.0.0.3
+Release:   alt1
 License:   GPLv2+ and LGPLv2+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -262,6 +262,11 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %python3_sitelibdir_noarch/*
 
 %changelog
+* Tue May 28 2024 Ivan Zakharyaschev <imz@altlinux.org> 1.1.13.0.0.3-alt1
+- (no visible changes) Cleaned up the series of ALT's patches and rebased it
+  onto the commit in upstream branch PACKAGEKIT_1_1_X which includes the fix
+  from 1.1.12-alt12.p9.1.
+
 * Thu Jun 17 2021 Ivan Zakharyaschev <imz@altlinux.org> 1.1.13-alt1.p9.1
 - Updated to upstream version 1.1.13 (the latest version in 1_1_X branch).
 
