@@ -40,6 +40,11 @@ AptCacheFile::AptCacheFile(PkBackendJob *job, bool const withLock,
 {
 }
 
+bool AptCacheFile::Open()
+{
+    return pkgCacheFile::Open(*m_progress);
+}
+
 AptCacheFile::~AptCacheFile()
 {
     delete m_packageRecords;
@@ -49,11 +54,6 @@ AptCacheFile::~AptCacheFile()
     // Discard all errors to avoid a future failure when opening
     // the package cache
     _error->Discard();
-}
-
-bool AptCacheFile::Open()
-{
-    return pkgCacheFile::Open(*m_progress);
 }
 
 bool AptCacheFile::BuildCaches()
