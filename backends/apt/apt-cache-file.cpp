@@ -443,7 +443,7 @@ pkgCache::VerIterator AptCacheFile::findCandidateVer(const pkgCache::PkgIterator
 
 std::string AptCacheFile::getShortDescription(const pkgCache::VerIterator &ver)
 {
-    if (ver.end() || ver.FileList().end() || GetPkgRecords() == 0) {
+    if (ver.end() || ver.FileList().end()) {
         return string();
     }
 
@@ -455,14 +455,19 @@ std::string AptCacheFile::getShortDescription(const pkgCache::VerIterator &ver)
     pkgCache::DescFileIterator df = d.FileList();
     if (df.end()) {
         return string();
-    } else {
-        return m_packageRecords->Lookup(df).ShortDesc();
     }
+
+    pkgRecords * const recs = GetPkgRecords();
+    if (!recs) {
+        return string();
+    }
+
+    return recs->Lookup(df).ShortDesc();
 }
 
 std::string AptCacheFile::getLongDescription(const pkgCache::VerIterator &ver)
 {
-    if (ver.end() || ver.FileList().end() || GetPkgRecords() == 0) {
+    if (ver.end() || ver.FileList().end()) {
         return string();
     }
 
@@ -474,9 +479,14 @@ std::string AptCacheFile::getLongDescription(const pkgCache::VerIterator &ver)
     pkgCache::DescFileIterator df = d.FileList();
     if (df.end()) {
         return string();
-    } else {
-        return m_packageRecords->Lookup(df).LongDesc();
     }
+
+    pkgRecords * const recs = GetPkgRecords();
+    if (!recs) {
+        return string();
+    }
+
+    return recs->Lookup(df).LongDesc();
 }
 
 std::string AptCacheFile::getLongDescriptionParsed(const pkgCache::VerIterator &ver)
