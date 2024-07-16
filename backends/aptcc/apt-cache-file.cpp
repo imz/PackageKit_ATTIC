@@ -456,20 +456,40 @@ pkgCache::VerIterator AptCacheFile::findCandidateVer(const pkgCache::PkgIterator
 
 std::string AptCacheFile::getShortDescription(const pkgCache::VerIterator &ver)
 {
-    if (ver.end() || ver.FileList().end() || GetPkgRecords() == 0) {
+    if (ver.end()) {
         return string();
     }
 
-    return m_packageRecords->Lookup(ver.FileList()).ShortDesc();
+    pkgCache::VerFileIterator vf = ver.FileList();
+    if (vf.end()) {
+        return string();
+    }
+
+    pkgRecords * const recs = GetPkgRecords();
+    if (!recs) {
+        return string();
+    }
+
+    return recs->Lookup(vf).ShortDesc();
 }
 
 std::string AptCacheFile::getLongDescription(const pkgCache::VerIterator &ver)
 {
-    if (ver.end() || ver.FileList().end() || GetPkgRecords() == 0) {
+    if (ver.end()) {
         return string();
     }
 
-    return m_packageRecords->Lookup(ver.FileList()).LongDesc();
+    pkgCache::VerFileIterator vf = ver.FileList();
+    if (vf.end()) {
+        return string();
+    }
+
+    pkgRecords * const recs = GetPkgRecords();
+    if (!recs) {
+        return string();
+    }
+
+    return recs->Lookup(vf).LongDesc();
 }
 
 std::string AptCacheFile::getLongDescriptionParsed(const pkgCache::VerIterator &ver)
