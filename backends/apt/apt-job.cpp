@@ -754,8 +754,8 @@ void AptJob::emitPackageDetail(const pkgCache::VerIterator &ver)
     found = section.find_last_of("/");
     section = section.substr(found + 1);
 
-    pkgCache::VerFileIterator vf = ver.FileList();
-    pkgRecords::Parser &rec = m_cache->GetPkgRecords()->Lookup(vf);
+    //pkgCache::VerFileIterator vf = ver.FileList();
+    //pkgRecords::Parser &rec = m_cache->GetPkgRecords()->Lookup(vf);
 
     long size;
     if (pkg->CurrentState == pkgCache::State::Installed && pkg.CurrentVer() == ver) {
@@ -772,7 +772,7 @@ void AptJob::emitPackageDetail(const pkgCache::VerIterator &ver)
                            "unknown",
                            get_enum_group(section),
                            m_cache->getLongDescriptionParsed(ver).c_str(),
-                           rec.Homepage().c_str(),
+                           "", //rec.Homepage().c_str(),
                            size);
 }
 
