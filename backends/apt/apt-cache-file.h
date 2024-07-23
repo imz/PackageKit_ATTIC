@@ -133,12 +133,12 @@ public:
      */
     std::string getShortDescription(const pkgCache::VerIterator &ver);
 
-    /** \return a short description string corresponding to the given
+    /** \return a long description string corresponding to the given
      *  version.
      */
     std::string getLongDescription(const pkgCache::VerIterator &ver);
 
-    /** \return a short description string corresponding to the given
+    /** \return a parsed long description string corresponding to the given
      *  version.
      */
     std::string getLongDescriptionParsed(const pkgCache::VerIterator &ver);
