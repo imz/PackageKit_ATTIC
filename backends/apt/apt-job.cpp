@@ -2425,7 +2425,7 @@ bool AptJob::installPackages(PkBitfield flags)
     unsigned long long FetchPBytes = fetcher.PartialPresent();
     unsigned long long DebBytes = fetcher.TotalNeeded();
     if (DebBytes != (*m_cache)->DebSize()) {
-        g_debug ("%lld, %lld: How odd.. The sizes didn't match, email apt@packages.debian.org",
+        g_debug ("%lld, %lf: How odd.. The sizes didn't match, email apt@packages.debian.org",
                  DebBytes, (*m_cache)->DebSize());
     }
 
