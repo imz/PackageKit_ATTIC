@@ -165,9 +165,6 @@ bool AptJob::init(gchar **localDebs)
 
     m_interactive = pk_backend_job_get_interactive(m_job);
     if (!m_interactive) {
-        // Do not ask about config updates if we are not interactive
-        _config->Set("Dpkg::Options::", "--force-confdef");
-        _config->Set("Dpkg::Options::", "--force-confold");
         // Ensure nothing interferes with questions
         g_setenv("APT_LISTCHANGES_FRONTEND", "none", TRUE);
         g_setenv("APT_LISTBUGS_FRONTEND", "none", TRUE);
