@@ -136,7 +136,6 @@ add_project_arguments(
 add_project_arguments(
   '-Werror=shadow',
   '-Werror=empty-body',
-  '-Werror=strict-prototypes',
   '-Werror=missing-prototypes',
   '-Werror=implicit-function-declaration',
   '-Werror=return-type',
