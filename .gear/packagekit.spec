@@ -5,8 +5,8 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.5.0.0.30
-Release:   alt4
+Version:   1.2.5.0.0.31
+Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
 URL:       http://www.freedesktop.org/software/PackageKit/
@@ -303,6 +303,10 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Wed Jan 15 2025 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.31-alt1
+- No user-visible changes.
+  (A technical release to save a cleaned up history of ALT's changes in git.)
+
 * Mon May 13 2024 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.30-alt4
 - Modified the appearance of the Origin-Suite for ALT repositories
   (already shortened in 1.1.12-alt9), so that the allowed symbols
