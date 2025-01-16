@@ -169,18 +169,30 @@ zypp_build_package_id_from_resolvable (const sat::Solvable &resolvable)
 {
 	gchar *package_id;
 	const char *arch;
+	g_autofree gchar *repo = NULL;
 
 	if (isKind<SrcPackage>(resolvable))
 		arch = "source";
 	else
 		arch = resolvable.arch ().asString ().c_str ();
 
-	string repo = resolvable.repository ().alias();
-	if (resolvable.isSystem())
-		repo = "installed";
+	if (resolvable.isSystem ()) {
+		PoolItem pi;
+		PoolItem installedPI { resolvable };
+		ui::Selectable::Ptr selectable { ui::Selectable::get (resolvable) };
+
+		if (selectable->identicalAvailableObj (installedPI) != NULL)
+			pi = selectable->identicalAvailableObj (installedPI);
+		else
+			pi = selectable->updateCandidateObj ();
+
+		repo = g_strconcat ("installed:", pi.repository ().alias ().c_str (), NULL);
+	} else
+		repo = g_strdup (resolvable.repository ().alias ().c_str ());
+
 	package_id = pk_package_id_build (resolvable.name ().c_str (),
 					  resolvable.edition ().asString ().c_str (),
-					  arch, repo.c_str ());
+					  arch, repo);
 
 	return package_id;
 }
@@ -599,7 +611,7 @@ ZyppJob::get_zypp()
 		/* TODO: we need to lifecycle manage this, detect changes
 		   in the requested 'root' etc. */
 		if (!initialized) {
-			filesystem::Pathname pathname("/");
+			zypp::filesystem::Pathname pathname("/");
 			zypp->initializeTarget (pathname);
 
 			initialized = TRUE;
@@ -1240,19 +1252,13 @@ zypp_get_package_updates (string repo, set<PoolItem> &pks)
 		resolver->doUpdate ();
 	}
 
-	for (; it != e; ++it) {
-		if (it->status().isLocked()) {
-			// We pretend locked packages are not upgradable at all since
-			// we can't represent the concept of holds in PackageKit.
-			// https://github.com/PackageKit/PackageKit/issues/325
-			continue;
-		} else if (it->status().isToBeInstalled()) {
+	for (; it != e; ++it)
+		if (it->status().isToBeInstalled()) {
 			ui::Selectable::constPtr s =
 				ui::Selectable::get((*it)->kind(), (*it)->name());
 			if (s->hasInstalledObj())
 				pks.insert(*it);
 		}
-	}
 
 	if (is_tumbleweed ()) {
 		resolver->setUpgradeMode (FALSE);
@@ -1663,7 +1669,7 @@ zypp_refresh_cache (PkBackendJob *job, ZYpp::Ptr zypp, gboolean force)
 
 	if (zypp == NULL)
 		return  FALSE;
-	filesystem::Pathname pathname("/");
+	zypp::filesystem::Pathname pathname("/");
 
 	bool poolIsClean = sat::Pool::instance ().reposEmpty ();
 	// Erase and reload all if pool is too holey (densyity [100: good | 0 bad])
@@ -1849,7 +1855,7 @@ pk_backend_destroy (PkBackend *backend)
 {
 	g_debug ("zypp_backend_destroy");
 
-	filesystem::recursive_rmdir (zypp::myTmpDir ());
+	zypp::filesystem::recursive_rmdir (zypp::myTmpDir ());
 
 	g_free (_repoName);
 	delete priv;
@@ -2532,7 +2538,7 @@ backend_install_files_thread (PkBackendJob *job, GVariant *params, gpointer user
 	}
 
 	// create a temporary directory
-	filesystem::TmpDir tmpDir;
+	zypp::filesystem::TmpDir tmpDir;
 	if (tmpDir == NULL) {
 		zypp_backend_finished_error (
 			job, PK_ERROR_ENUM_LOCAL_INSTALL_FAILED,
@@ -2555,7 +2561,7 @@ backend_install_files_thread (PkBackendJob *job, GVariant *params, gpointer user
 
 		// copy the rpm into tmpdir
 		string tempDest = tmpDir.path ().asString () + "/" + rpmHeader->tag_name () + ".rpm";
-		if (filesystem::copy (full_paths[i], tempDest) != 0) {
+		if (zypp::filesystem::copy (full_paths[i], tempDest) != 0) {
 			zypp_backend_finished_error (
 				job, PK_ERROR_ENUM_LOCAL_INSTALL_FAILED,
 				"Could not copy the rpm-file into the temp-dir");
@@ -2940,6 +2946,14 @@ backend_remove_packages_thread (PkBackendJob *job, GVariant *params, gpointer us
 			return;
 		}
 		PoolItem item(solvable);
+		if (item.status ().isLocked ()) {
+			zypp_backend_finished_error (job,
+                                         PK_ERROR_ENUM_PACKAGE_FAILED_TO_REMOVE,
+                                         "Unable to remove %s: Locked package.",
+                                         solvable.name ().c_str ());
+
+			return;
+		}
 		if (solvable.isSystem ()) {
 			item.status ().setToBeUninstalled (ResStatus::USER);
 			items.push_back (item);
@@ -3752,6 +3766,7 @@ pk_backend_what_provides_decompose (PkBackendJob *job, gchar **values)
 		g_ptr_array_add (array, g_strdup_printf ("postscriptdriver(%s)", values[i]));
 		g_ptr_array_add (array, g_strdup_printf ("plasma4(%s)", values[i]));
 		g_ptr_array_add (array, g_strdup_printf ("plasma5(%s)", values[i]));
+		g_ptr_array_add (array, g_strdup_printf ("language(%s)", values[i]));
 	}
 	search = pk_ptr_array_to_strv (array);
 	for (i = 0; search[i] != NULL; i++)
@@ -3910,7 +3925,7 @@ backend_download_packages_thread (PkBackendJob *job, GVariant *params, gpointer 
 			PoolItem item(solvable);
 			size += 2 * make<ResObject>(solvable)->downloadSize();
 
-			filesystem::Pathname repo_dir = solvable.repository().info().packagesPath();
+			zypp::filesystem::Pathname repo_dir = solvable.repository().info().packagesPath();
 			struct statfs stat;
 			statfs(repo_dir.c_str(), &stat);
 			if (size > stat.f_bavail * 4) {
@@ -3935,7 +3950,7 @@ backend_download_packages_thread (PkBackendJob *job, GVariant *params, gpointer 
 			// be sure it ends with /
 			target += "/";
 			target += tmp_file->basename();
-			filesystem::hardlinkCopy(tmp_file, target);
+			zypp::filesystem::hardlinkCopy(tmp_file, target);
 			const gchar *to_strv[] = { NULL, NULL };
 			to_strv[0] =  target.c_str();
 			pk_backend_job_files (job, package_ids[i],(gchar **) to_strv);

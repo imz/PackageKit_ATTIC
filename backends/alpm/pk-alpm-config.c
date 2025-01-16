@@ -362,6 +362,7 @@ typedef struct
 /* keep this in alphabetical order */
 static const PkAlpmConfigList pk_alpm_config_list_options[] = {
 	{ "HoldPkg", G_STRUCT_OFFSET (PkAlpmConfig, holdpkgs) },
+	{ "HookDir", G_STRUCT_OFFSET (PkAlpmConfig, hookdirs) },
 	{ "IgnoreGroup", G_STRUCT_OFFSET (PkAlpmConfig, ignoregroups) },
 	{ "IgnorePkg", G_STRUCT_OFFSET (PkAlpmConfig, ignorepkgs) },
 	{ "LocalFileSigLevel", G_STRUCT_OFFSET (PkAlpmConfig,
@@ -370,7 +371,6 @@ static const PkAlpmConfigList pk_alpm_config_list_options[] = {
 	{ "NoUpgrade", G_STRUCT_OFFSET (PkAlpmConfig, noupgrades) },
 	{ "RemoteFileSigLevel", G_STRUCT_OFFSET (PkAlpmConfig,
 						 remotefilesiglevels) },
-	{ "HookDir", G_STRUCT_OFFSET (PkAlpmConfig, hookdirs) },
 	{ NULL, 0 }
 };
 
@@ -612,6 +612,11 @@ pk_alpm_config_parse (PkAlpmConfig *config, const gchar *filename,
 
 		if (g_strcmp0 (key, "ParallelDownloads") == 0 && str != NULL) {
 			/* Ignore "ParallelDownloads" key instead of crashing */
+			continue;
+		}
+
+		if (g_strcmp0 (key, "CacheServer") == 0 && str != NULL) {
+			/* Ignore "CacheServer" key instead of crashing */
 			continue;
 		}
 
@@ -1014,7 +1019,9 @@ pk_alpm_config_configure_alpm (PkBackend *backend, PkAlpmConfig *config, GError 
 	config->noupgrades = NULL;
 
 	/* alpm takes ownership */
-	alpm_option_set_noupgrades (handle, config->hookdirs);
+	for(alpm_list_t *j = config->hookdirs; j; j = j->next) {
+		alpm_option_add_hookdir(handle, j->data);
+	}
 	config->hookdirs = NULL;
 
 	pk_alpm_config_configure_repos (backend, config, handle, error);

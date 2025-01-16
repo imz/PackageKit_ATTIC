@@ -26,7 +26,7 @@
 
 #include <config.h>
 #include <pk-backend.h>
-#include <pk-backend-spawn.h>
+#include <packagekit-glib2/pk-debug.h>
 
 #include <apt-pkg/error.h>
 #include <apt-pkg/fileutl.h>
@@ -39,8 +39,6 @@
 #include "acqpkitstatus.h"
 #include "apt-sourceslist.h"
 
-/* static bodges */
-static PkBackendSpawn *spawn;
 
 const gchar* pk_backend_get_description(PkBackend *backend)
 {
@@ -62,14 +60,18 @@ pk_backend_supports_parallelization (PkBackend *backend)
 
 void pk_backend_initialize(GKeyFile *conf, PkBackend *backend)
 {
-    g_debug("APT backend Initializing");
+    /* use logging */
+    pk_debug_add_log_domain (G_LOG_DOMAIN);
+    pk_debug_add_log_domain ("APT");
+
+    g_debug("Using APT: %s", pkgVersion);
 
     // Disable apt-listbugs as it freezes PK
-    setenv("APT_LISTBUGS_FRONTEND", "none", 1);
+    g_setenv("APT_LISTBUGS_FRONTEND", "none", 1);
 
     // Set apt-listchanges frontend to "debconf" to make it's output visible
     // (without using the debconf frontend, PK will freeze)
-    setenv("APT_LISTCHANGES_FRONTEND", "debconf", 1);
+    g_setenv("APT_LISTCHANGES_FRONTEND", "debconf", 1);
 
     // pkgInitConfig makes sure the config is ready for the
     // get-filters call which needs to know about multi-arch
@@ -82,10 +84,6 @@ void pk_backend_initialize(GKeyFile *conf, PkBackend *backend)
     if (!pkgInitSystem(*_config, _system)) {
         g_debug("ERROR initializing backend system");
     }
-
-    spawn = pk_backend_spawn_new(conf);
-    //     pk_backend_spawn_set_job(spawn, backend);
-    pk_backend_spawn_set_name(spawn, "apt");
 }
 
 void pk_backend_destroy(PkBackend *backend)
@@ -301,10 +299,10 @@ static void backend_get_updates_thread(PkBackendJob *job, GVariant *params, gpoi
     updates = apt->getUpdates(blocked, downgrades, installs, removals, obsoleted);
 
     apt->emitUpdates(updates, filters);
-    apt->emitPackages(installs, filters, PK_INFO_ENUM_INSTALLING);
-    apt->emitPackages(removals, filters, PK_INFO_ENUM_REMOVING);
-    apt->emitPackages(obsoleted, filters, PK_INFO_ENUM_OBSOLETING);
-    apt->emitPackages(downgrades, filters, PK_INFO_ENUM_DOWNGRADING);
+    apt->emitPackages(installs, filters, PK_INFO_ENUM_INSTALL);
+    apt->emitPackages(removals, filters, PK_INFO_ENUM_REMOVE);
+    apt->emitPackages(obsoleted, filters, PK_INFO_ENUM_OBSOLETE);
+    apt->emitPackages(downgrades, filters, PK_INFO_ENUM_DOWNGRADE);
     apt->emitPackages(blocked, filters, PK_INFO_ENUM_BLOCKED);
 }
 
