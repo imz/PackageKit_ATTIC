@@ -230,7 +230,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %dir %_libdir/packagekit-backend
 %config(noreplace) %_sysconfdir/PackageKit/PackageKit.conf
 %config(noreplace) %_sysconfdir/PackageKit/Vendor.conf
-%config %_sysconfdir/dbus-1/system.d/*
+%config %_datadir/dbus-1/system.d/*
 %_man1dir/pkcon.1*
 %_man1dir/pkmon.1*
 %_datadir/polkit-1/actions/*.policy
