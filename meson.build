@@ -1,5 +1,5 @@
 project('PackageKit', 'c',
-  version : '1.2.5',
+  version : '1.3.0',
   license : 'LGPL-2.1+',
   meson_version : '>=0.50',
   default_options : ['warning_level=2', 'c_std=c99'],
@@ -68,7 +68,7 @@ add_project_arguments ('-D_DEFAULT_SOURCE', language: 'c')
 add_project_arguments ('-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_44', language: 'c')
 
 # allow the daemon to include library files directly
-add_project_arguments ('-DPK_COMPILATION', language: 'c')
+add_project_arguments ('-DPK_COMPILATION', language: ['c', 'cpp'])
 
 conf = configuration_data()
 conf.set_quoted('DATADIR', join_paths(get_option('prefix'), get_option('datadir')))
@@ -101,16 +101,17 @@ config_dep = declare_dependency(
 
 pk_db_dir = join_paths(get_option('localstatedir'), 'lib', 'PackageKit')
 local_state_dir = get_option('localstatedir')
-test_data_dir = join_paths(meson.source_root(), 'data', 'tests')
+test_data_dir = join_paths(meson.source_root(), 'tests', 'data')
 package_data_dir = get_option('datadir')
 package_locale_dir = join_paths(get_option('prefix'), get_option('datadir'), 'locale')
 pk_plugin_dir = join_paths(get_option('prefix'), get_option('libdir'), 'packagekit-backend')
 
-# work both in C and C++
+# default compiler flags for C and C++
 add_project_arguments(
   '-Wall',
-  '-Wcast-align', '-Wno-uninitialized',
-  '-Wmissing-declarations',
+  '-Wcast-align',
+  '-Wno-uninitialized',
+  '-Werror=missing-declarations',
   '-Wredundant-decls',
   '-Wpointer-arith',
   '-Wcast-align',
@@ -131,11 +132,21 @@ add_project_arguments(
   language: ['c', 'cpp']
 )
 
-# work only in C
+# default compiler flags for C only
 add_project_arguments(
+  '-Werror=shadow',
+  '-Werror=empty-body',
+  '-Werror=strict-prototypes',
+  '-Werror=missing-prototypes',
+  '-Werror=implicit-function-declaration',
+  '-Werror=return-type',
+  '-Werror=int-conversion',
+  '-Werror=incompatible-pointer-types',
+  '-Werror=misleading-indentation',
+  '-Werror=missing-include-dirs',
+  '-Werror=declaration-after-statement',
+  '-Werror=format-security',
   '-Waggregate-return',
-  '-Wdeclaration-after-statement',
-  '-Wshadow',
   '-Wno-strict-aliasing',
   '-Winline',
   '-Wmissing-parameter-type',

@@ -100,6 +100,7 @@ struct PkBackendJobPrivate
 	gboolean		 allow_cancel;
 	gboolean		 background;
 	gboolean		 interactive;
+	gboolean		 details_with_deps_size;
 	gboolean		 locked;
 	GHashTable		*emitted;
 	PkErrorEnum		 last_error_code;
@@ -443,7 +444,7 @@ pk_backend_job_set_cache_age (PkBackendJob *job, guint cache_age)
 	if (cache_age != G_MAXUINT && cache_age > cache_age_offset)
 		cache_age -= cache_age_offset;
 
-	g_debug ("cache-age changed to %u", cache_age);
+	g_debug ("cache-age changed to %u seconds", cache_age);
 	job->priv->cache_age = cache_age;
 }
 
@@ -480,6 +481,20 @@ pk_backend_job_set_interactive (PkBackendJob *job, gboolean interactive)
 {
 	g_return_if_fail (PK_IS_BACKEND_JOB (job));
 	job->priv->interactive = interactive;
+}
+
+gboolean
+pk_backend_job_get_details_with_deps_size (PkBackendJob *job)
+{
+	g_return_val_if_fail (PK_IS_BACKEND_JOB (job), FALSE);
+	return job->priv->details_with_deps_size;
+}
+
+void
+pk_backend_job_set_details_with_deps_size (PkBackendJob *job, gboolean details_with_deps_size)
+{
+	g_return_if_fail (PK_IS_BACKEND_JOB (job));
+	job->priv->details_with_deps_size = details_with_deps_size;
 }
 
 PkRoleEnum
@@ -536,6 +551,8 @@ pk_backend_job_signal_to_string (PkBackendJobSignal id)
 		return "Finished";
 	if (id == PK_BACKEND_SIGNAL_PACKAGE)
 		return "Package";
+	if (id == PK_BACKEND_SIGNAL_PACKAGES)
+		return "Packages";
 	if (id == PK_BACKEND_SIGNAL_ITEM_PROGRESS)
 		return "ItemProgress";
 	if (id == PK_BACKEND_SIGNAL_FILES)
@@ -562,6 +579,8 @@ pk_backend_job_signal_to_string (PkBackendJobSignal id)
 		return "LockedChanged";
 	if (id == PK_BACKEND_SIGNAL_UPDATE_DETAIL)
 		return "UpdateDetail";
+	if (id == PK_BACKEND_SIGNAL_UPDATE_DETAILS)
+		return "UpdateDetails";
 	if (id == PK_BACKEND_SIGNAL_CATEGORY)
 		return "Category";
 	return NULL;
@@ -1032,6 +1051,62 @@ pk_backend_job_package_full (PkBackendJob *job,
 }
 
 void
+pk_backend_job_packages (PkBackendJob *job,
+                         GPtrArray    *packages  /* (element-type PkPackage) */)
+{
+	g_return_if_fail (PK_IS_BACKEND_JOB (job));
+	g_return_if_fail (packages != NULL);
+
+	for (guint i = 0; i < packages->len; i++) {
+		PkPackage *item = g_ptr_array_index (packages, i);
+		PkInfoEnum info = pk_package_get_info (item);
+		PkPackage *emitted_item;
+
+		/* already emitted? */
+		emitted_item = g_hash_table_lookup (job->priv->emitted, pk_package_get_id (item));
+		if (emitted_item != NULL && pk_package_equal (emitted_item, item))
+			continue;
+
+		/* update the emitted package table */
+		g_hash_table_insert (job->priv->emitted,
+			             g_strdup (pk_package_get_id (item)),
+			             g_object_ref (item));
+
+		/* have we already set an error? */
+		if (job->priv->set_error) {
+			g_warning ("already set error: package %s", pk_package_get_id (item));
+			continue;
+		}
+
+		/* we automatically set the transaction status  */
+		if (info == PK_INFO_ENUM_DOWNLOADING)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_DOWNLOAD);
+		else if (info == PK_INFO_ENUM_UPDATING)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_UPDATE);
+		else if (info == PK_INFO_ENUM_INSTALLING)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_INSTALL);
+		else if (info == PK_INFO_ENUM_REMOVING)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_REMOVE);
+		else if (info == PK_INFO_ENUM_CLEANUP)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_CLEANUP);
+		else if (info == PK_INFO_ENUM_OBSOLETING)
+			pk_backend_job_set_status (job, PK_STATUS_ENUM_OBSOLETE);
+
+		/* we've sent a package for this transaction */
+		job->priv->has_sent_package = TRUE;
+	}
+
+	/* emit; this relies on the @packages array having ownership of all its
+	 * elements, as the job is asynchronous so they may be freed in their
+	 * original calling context */
+	if (packages->len > 0)
+		pk_backend_job_call_vfunc (job,
+					   PK_BACKEND_SIGNAL_PACKAGES,
+					   g_ptr_array_ref (packages),
+					   (GDestroyNotify) g_ptr_array_unref);
+}
+
+void
 pk_backend_job_update_detail (PkBackendJob *job,
 			      const gchar *package_id,
 			      gchar **updates,
@@ -1096,6 +1171,29 @@ pk_backend_job_update_detail (PkBackendJob *job,
 				   PK_BACKEND_SIGNAL_UPDATE_DETAIL,
 				   g_object_ref (item),
 				   g_object_unref);
+}
+
+void
+pk_backend_job_update_details (PkBackendJob *job,
+                               GPtrArray    *update_details  /* (element-type PkUpdateDetail) */)
+{
+	g_return_if_fail (PK_IS_BACKEND_JOB (job));
+	g_return_if_fail (update_details != NULL);
+
+	/* have we already set an error? */
+	if (job->priv->set_error) {
+		g_warning ("already set error: update_details");
+		return;
+	}
+
+	/* emit; this relies on the @update_details array having ownership of
+	 * all its elements, as the job is asynchronous so they may be freed in
+	 * their original calling context */
+	if (update_details->len > 0)
+		pk_backend_job_call_vfunc (job,
+					   PK_BACKEND_SIGNAL_UPDATE_DETAILS,
+					   g_ptr_array_ref (update_details),
+					   (GDestroyNotify) g_ptr_array_unref);
 }
 
 void

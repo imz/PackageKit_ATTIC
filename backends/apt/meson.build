@@ -5,7 +5,7 @@ cpp_compiler = meson.get_compiler('cpp')
 gstreamer_dep = dependency('gstreamer-1.0')
 gstreamer_base_dep = dependency('gstreamer-base-1.0')
 gstreamer_plugins_base_dep = dependency('gstreamer-plugins-base-1.0')
-appstream_dep = dependency('appstream', version: '>=0.12')
+appstream_dep = dependency('appstream', version: '>=0.16.0')
 apt_pkg_dep = cpp_compiler.find_library('apt-pkg')
 
 # Check whether apt supports ddtp
@@ -24,6 +24,10 @@ if cpp_compiler.compiles(
 )
   ddtp_flag = ['-DHAVE_DDTP']
 endif
+
+c_args = ['-DG_LOG_DOMAIN="PackageKit-APT"',
+          '-DDATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'))),
+]
 
 shared_module(
   'pk_backend_apt',
@@ -49,15 +53,14 @@ shared_module(
     packagekit_glib2_dep,
     gmodule_dep,
     apt_pkg_dep,
+    appstream_dep,
     gstreamer_dep,
     gstreamer_base_dep,
     gstreamer_plugins_base_dep,
-    appstream_dep,
   ],
+  c_args: c_args,
   cpp_args: [
-    '-DG_LOG_DOMAIN="PackageKit-APT"',
-    '-DPK_COMPILATION=1',
-    '-DDATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'))),
+    c_args,
     ddtp_flag,
     # To avoid some errors on API change:
     '-Werror=overloaded-virtual',
