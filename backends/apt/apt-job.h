@@ -263,7 +263,6 @@ private:
     bool       m_cancel;
     struct stat m_restartStat;
 
-    bool m_isMultiArch;
     PkgList m_pkgs;
     PkgList m_restartPackages;
 
