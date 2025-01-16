@@ -154,14 +154,14 @@ mkdir -p %{buildroot}%{_unitdir}/system-update.target.wants/
 ln -sf ../packagekit-offline-update.service %{buildroot}%{_unitdir}/system-update.target.wants/packagekit-offline-update.service
 
 # get rid of test backend
-rm -f %buildroot%_libdir/packagekit-backend/libpk_backend_test_*.so
-rm -rf %buildroot%_datadir/PackageKit/helpers/test_spawn
+rm %buildroot%_libdir/packagekit-backend/libpk_backend_test_*.so
+rm -r %buildroot%_datadir/PackageKit/helpers/test_spawn
 
 # Following scripts seems unused, and it needs to be patched for ALT should it be used
-rm -f %buildroot%_datadir/PackageKit/pk-upgrade-distro.sh
+rm %buildroot%_datadir/PackageKit/pk-upgrade-distro.sh
 
 # Remove unused files
-rm -f %buildroot%_datadir/PackageKit/helpers/apt/pkconffile.nodiff
+rm %buildroot%_datadir/PackageKit/helpers/apt/pkconffile.nodiff
 
 touch %buildroot%_localstatedir/PackageKit/upgrade_lock
 
