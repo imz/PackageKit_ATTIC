@@ -113,13 +113,13 @@ Python3 backend for PackageKit.
 %patch1 -p1
 %ifarch %e2k
 # workaround for EDG frontend
-sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/aptcc/apt-{utils,intf}.cpp
+sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/apt/apt-{utils,job}.cpp
 %endif
 
 %build
 %add_optflags -D_FILE_OFFSET_BITS=64
 %meson \
-	-Dpackaging_backend=aptcc \
+	-Dpackaging_backend=apt \
 	-Dsystemd=true \
 	-Doffline_update=true \
 	-Dgtk_doc=true \
@@ -156,7 +156,7 @@ rm -rf %buildroot%_datadir/PackageKit/helpers/test_spawn
 rm -f %buildroot%_datadir/PackageKit/pk-upgrade-distro.sh
 
 # Remove unused files
-rm -f %buildroot%_datadir/PackageKit/helpers/aptcc/pkconffile.nodiff
+rm -f %buildroot%_datadir/PackageKit/helpers/apt/pkconffile.nodiff
 
 touch %buildroot%_localstatedir/PackageKit/upgrade_lock
 
@@ -244,7 +244,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 %_unitdir/system-update.target.wants/
 %_libexecdir/pk-*offline-update
 %config %_sysconfdir/apt/apt.conf.d/20packagekit
-%_libdir/packagekit-backend/libpk_backend_aptcc.so
+%_libdir/packagekit-backend/libpk_backend_apt.so
 %_libexecdir/pk-invoke-filetriggers.sh
 %_sysconfdir/NetworkManager/dispatcher.d/pre-up.d/packagekit.sh
 
