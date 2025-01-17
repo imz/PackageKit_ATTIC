@@ -35,7 +35,7 @@
 #include <systemd/sd-journal.h>
 
 static void
-pk_offline_update_create_snapshot ()
+pk_offline_update_create_snapshot (void)
 {
 	g_autoptr(GError) error = NULL;
 	g_autofree gchar *cmdargv = NULL;
