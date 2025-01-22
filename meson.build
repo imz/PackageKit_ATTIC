@@ -109,6 +109,7 @@ pk_plugin_dir = join_paths(get_option('prefix'), get_option('libdir'), 'packagek
 # default compiler flags for C and C++
 add_project_arguments(
   '-Wall',
+  '-Werror=format',
   '-Wcast-align',
   '-Wno-uninitialized',
   '-Werror=missing-declarations',
