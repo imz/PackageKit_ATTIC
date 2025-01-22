@@ -166,12 +166,12 @@ bool AptJob::init(gchar **localDebs)
     m_interactive = pk_backend_job_get_interactive(m_job);
     if (!m_interactive) {
         // Do not ask about config updates if we are not interactive
-        if (!dpkgHasForceConfFileSet()) {
+        if (!isSystemDpkgConf()) {
             _config->Set("Dpkg::Options::", "--force-confdef");
             _config->Set("Dpkg::Options::", "--force-confold");
         } else {
             // If any option is set we should not change anything
-            g_debug("Using system settings for --force-conf*");
+            cout << "Using system settings for --force-conf*" << endl;
         }
         // Ensure nothing interferes with questions
         g_setenv("APT_LISTCHANGES_FRONTEND", "none", TRUE);
@@ -196,7 +196,7 @@ void AptJob::setEnvLocaleFromJob()
     g_setenv("LANGUAGE", locale, TRUE);
 }
 
-bool AptJob::dpkgHasForceConfFileSet() {
+bool AptJob::isSystemDpkgConf() {
     std::vector<std::string> dpkg_options = _config->FindVector("Dpkg::Options");
 
     bool is_set = false;
