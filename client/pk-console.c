@@ -1556,8 +1556,8 @@ pk_console_offline_status (GError **error)
 	error_code = pk_results_get_error_code (results);
 	if (error_code != NULL) {
 		g_print ("Status:\tFailed\n");
-		g_print ("ErrorCode:\%s\n", pk_error_enum_to_string (pk_error_get_code (error_code)));
-		g_print ("ErrorDetails:\%s\n", pk_error_get_details (error_code));
+		g_print ("ErrorCode:\t%s\n", pk_error_enum_to_string (pk_error_get_code (error_code)));
+		g_print ("ErrorDetails:\t%s\n", pk_error_get_details (error_code));
 	} else {
 		guint i;
 		g_autoptr(GPtrArray) array = NULL;
