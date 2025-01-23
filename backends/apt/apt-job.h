@@ -39,7 +39,7 @@
 
 #include <memory>
 
-#define REBOOT_REQUIRED      "/run/reboot-required"
+#define REBOOT_REQUIRED_FILE    "/run/reboot-required"
 
 class pkgProblemResolver;
 class Matcher;
@@ -188,11 +188,6 @@ public:
     void emitDetails(PkgList &pkgs);
 
     /**
-      * Emits update detail
-      */
-    void emitUpdateDetail(const pkgCache::VerIterator &candver);
-
-    /**
       * Emits update datails for the given list
       */
     void emitUpdateDetails(const PkgList &pkgs);
@@ -234,6 +229,11 @@ public:
 private:
     void setEnvLocaleFromJob();
     bool matchesQueries(const vector<string> &queries, string s);
+    PkInfoEnum packageStateFromVer(const pkgCache::VerIterator &ver) const;
+    void stagePackageForEmit(GPtrArray *array, const pkgCache::VerIterator &ver,
+                             PkInfoEnum state = PK_INFO_ENUM_UNKNOWN,
+                             PkInfoEnum updateSeverity = PK_INFO_ENUM_UNKNOWN) const;
+    void stageUpdateDetail(GPtrArray *updateArray, const pkgCache::VerIterator &candver);
 
     PkgList checkChangedPackages(bool emitChanged);
     pkgCache::VerIterator findTransactionPackage(const std::string &name);

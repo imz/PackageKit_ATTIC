@@ -383,20 +383,22 @@ PkgList AptJob::filterPackages(const PkgList &packages, PkBitfield filters)
     return ret;
 }
 
-// used to emit packages it collects all the needed info
+PkInfoEnum AptJob::packageStateFromVer(const pkgCache::VerIterator &ver) const
+{
+    const pkgCache::PkgIterator &pkg = ver.ParentPkg();
+    if (pkg->CurrentState == pkgCache::State::Installed &&
+            pkg.CurrentVer() == ver) {
+        return PK_INFO_ENUM_INSTALLED;
+    } else {
+        return PK_INFO_ENUM_AVAILABLE;
+    }
+}
+
 void AptJob::emitPackage(const pkgCache::VerIterator &ver, PkInfoEnum state)
 {
-    // check the state enum to see if it was not set.
-    if (state == PK_INFO_ENUM_UNKNOWN) {
-        const pkgCache::PkgIterator &pkg = ver.ParentPkg();
-
-        if (pkg->CurrentState == pkgCache::State::Installed &&
-                pkg.CurrentVer() == ver) {
-            state = PK_INFO_ENUM_INSTALLED;
-        } else {
-            state = PK_INFO_ENUM_AVAILABLE;
-        }
-    }
+    // get state from the cache if it was not set explicitly
+    if (state == PK_INFO_ENUM_UNKNOWN)
+        state = packageStateFromVer(ver);
 
     g_autofree gchar *package_id = m_cache->buildPackageId(ver);
     pk_backend_job_package(m_job,
@@ -411,6 +413,30 @@ void AptJob::emitPackageProgress(const pkgCache::VerIterator &ver, PkStatusEnum 
     pk_backend_job_set_item_progress(m_job, package_id, status, percentage);
 }
 
+void AptJob::stagePackageForEmit(GPtrArray *array, const pkgCache::VerIterator &ver, PkInfoEnum state, PkInfoEnum updateSeverity) const
+{
+    g_autoptr(PkPackage) pk_package = pk_package_new ();
+    g_autofree gchar *package_id = m_cache->buildPackageId(ver);
+    g_autoptr(GError) local_error = NULL;
+
+    if (!pk_package_set_id (pk_package, package_id, &local_error)) {
+        g_warning ("package_id %s invalid and cannot be processed: %s",
+               package_id, local_error->message);
+        return;
+    }
+
+    // get state from the cache if it was not set explicitly
+    if (state == PK_INFO_ENUM_UNKNOWN)
+        state = packageStateFromVer(ver);
+    pk_package_set_info (pk_package, state);
+
+    if (updateSeverity != PK_INFO_ENUM_UNKNOWN)
+        pk_package_set_update_severity (pk_package, updateSeverity);
+
+    pk_package_set_summary (pk_package, m_cache->getShortDescription(ver).c_str());
+    g_ptr_array_add (array, g_steal_pointer (&pk_package));
+}
+
 void AptJob::emitPackages(PkgList &output, PkBitfield filters, PkInfoEnum state, bool multiversion)
 {
     // Sort so we can remove the duplicated entries
@@ -419,7 +445,12 @@ void AptJob::emitPackages(PkgList &output, PkBitfield filters, PkInfoEnum state,
     // Remove the duplicated entries
     output.removeDuplicates();
 
+    // apply filter
     output = filterPackages(output, filters);
+
+    // create array of PK package data to emit
+    g_autoptr(GPtrArray) pkgArray = g_ptr_array_new_full (output.size(), (GDestroyNotify) g_object_unref);
+
     for (const PkgInfo &info : output) {
         if (m_cancel)
             break;
@@ -427,16 +458,20 @@ void AptJob::emitPackages(PkgList &output, PkBitfield filters, PkInfoEnum state,
         auto ver = info.ver;
         // emit only the latest/chosen version if newest is requested
         if (!multiversion || pk_bitfield_contain(filters, PK_FILTER_ENUM_NEWEST)) {
-            emitPackage(info.ver, state);
+            stagePackageForEmit(pkgArray, info.ver, state);
             continue;
         } else if (pk_bitfield_contain(filters, PK_FILTER_ENUM_NOT_NEWEST) && !ver.end()) {
             ver++;
         }
 
         for (; !ver.end(); ver++) {
-            emitPackage(ver, state);
+            stagePackageForEmit(pkgArray, info.ver, state);
         }
     }
+
+    // emit
+    if (pkgArray->len > 0)
+        pk_backend_job_packages(m_job, pkgArray);
 }
 
 void AptJob::emitRequireRestart(PkgList &output)
@@ -462,17 +497,25 @@ void AptJob::emitUpdates(PkgList &output, PkBitfield filters)
     // Remove the duplicated entries
     output.removeDuplicates();
 
+    // filter
     output = filterPackages(output, filters);
+
+    // create array of PK package data to emit
+    g_autoptr(GPtrArray) pkgArray = g_ptr_array_new_full (output.size(), (GDestroyNotify) g_object_unref);
+
     for (const PkgInfo &pkgInfo : output) {
-        if (m_cancel) {
+        if (m_cancel)
             break;
-        }
 
         // the default update info
         state = PK_INFO_ENUM_NORMAL;
 
         emitPackage(pkgInfo.ver, state);
     }
+
+    // emit
+    if (pkgArray->len > 0)
+        pk_backend_job_packages(m_job, pkgArray);
 }
 
 // search packages which provide a codec (specified in "values")
@@ -735,8 +778,8 @@ void AptJob::emitDetails(PkgList &pkgs)
     }
 }
 
-// used to emit packages it collects all the needed info
-void AptJob::emitUpdateDetail(const pkgCache::VerIterator &candver)
+// helper for emitUpdateDetails() to create update items and add them to the final array for emission
+void AptJob::stageUpdateDetail(GPtrArray *updateArray, const pkgCache::VerIterator &candver)
 {
     // Verify if our update version is valid
     if (candver.end()) {
@@ -829,29 +872,37 @@ void AptJob::emitUpdateDetail(const pkgCache::VerIterator &candver)
     // NULL terminate
     g_ptr_array_add(obsoletes, NULL);
 
-    pk_backend_job_update_detail(m_job,
-                                 package_id,
-                                 updates,//const gchar *updates
-                                 (gchar **) obsoletes->pdata,//const gchar *obsoletes
-                                 NULL,//const gchar *vendor_url
-                                 (gchar **) bugzilla_urls->pdata,// gchar **bugzilla_urls
-                                 (gchar **) cve_urls->pdata,// gchar **cve_urls
-                                 restart,//PkRestartEnum restart
-                                 update_text.c_str(),//const gchar *update_text
-                                 changelog.c_str(),//const gchar *changelog
-                                 updateState,//PkUpdateStateEnum state
-                                 issued.c_str(), //const gchar *issued_text
-                                 updated.c_str() //const gchar *updated_text
-                                 );
+    // construct the update item with out newly gathered data
+    PkUpdateDetail *item = pk_update_detail_new ();
+    g_object_set(item,
+              "package-id", package_id,
+              "updates", updates, //const gchar *updates
+              "obsoletes", (gchar **) obsoletes->pdata, //const gchar *obsoletes
+              "vendor-urls", NULL, //const gchar *vendor_url
+              "bugzilla-urls", (gchar **) bugzilla_urls->pdata, // gchar **bugzilla_urls
+              "cve-urls", (gchar **) cve_urls->pdata, // gchar **cve_urls
+              "restart", restart, //PkRestartEnum restart
+              "update-text", update_text.c_str(), //const gchar *update_text
+              "changelog", changelog.c_str(), //const gchar *changelog
+              "state", updateState, //PkUpdateStateEnum state
+              "issued", issued.c_str(), //const gchar *issued_text
+              "updated", updated.c_str(), //const gchar *updated_text
+              NULL);
+    g_ptr_array_add(updateArray, item);
 }
 
 void AptJob::emitUpdateDetails(const PkgList &pkgs)
 {
+    g_autoptr(GPtrArray) updateDetailsArray = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
+
     for (const PkgInfo &pi : pkgs) {
         if (m_cancel)
             break;
-        emitUpdateDetail(pi.ver);
+        stageUpdateDetail(updateDetailsArray, pi.ver);
     }
+
+    // emit all data that we've just collected
+    pk_backend_job_update_details(m_job, updateDetailsArray);
 }
 
 void AptJob::getDepends(PkgList &output,
@@ -1587,17 +1638,17 @@ bool AptJob::runTransaction(const PkgList &install, const PkgList &remove, const
 
     // Prepare for the restart thing
     struct stat restartStatStart;
-    if (g_file_test(REBOOT_REQUIRED, G_FILE_TEST_EXISTS)) {
-        g_stat(REBOOT_REQUIRED, &restartStatStart);
+    if (g_file_test(REBOOT_REQUIRED_FILE, G_FILE_TEST_EXISTS)) {
+        g_stat(REBOOT_REQUIRED_FILE, &restartStatStart);
     }
 
     // If we are simulating the install packages
     // will just calculate the trusted packages
     const auto ret = installPackages(flags);
 
-    if (g_file_test(REBOOT_REQUIRED, G_FILE_TEST_EXISTS)) {
+    if (g_file_test(REBOOT_REQUIRED_FILE, G_FILE_TEST_EXISTS)) {
         struct stat restartStat;
-        g_stat(REBOOT_REQUIRED, &restartStat);
+        g_stat(REBOOT_REQUIRED_FILE, &restartStat);
 
         if (restartStat.st_mtime > restartStatStart.st_mtime) {
             // Emit the packages that caused the restart
