@@ -5,7 +5,7 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.5.0.0.36
+Version:   1.3.0
 Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
@@ -214,7 +214,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 
 %files -f PackageKit.lang
 %doc COPYING
-%doc README AUTHORS NEWS
+%doc README.md AUTHORS NEWS
 %dir %_datadir/PackageKit
 %dir %_datadir/PackageKit/helpers
 %dir %_sysconfdir/PackageKit
@@ -299,6 +299,9 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Thu Jan 23 2025 Dmitrii Fomchenkov <sirius@altlinux.org> 1.3.0-alt1
+- Updated to upstream version 1.3.0
+
 * Wed Jan 22 2025 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.36-alt1
 - Rebased onto upstream b233f3634 (apt: Generate logging output properly).
 - Tiny adaptions and enhancements to the source code driven by compiler
