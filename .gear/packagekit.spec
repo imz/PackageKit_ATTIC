@@ -5,7 +5,7 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.6
+Version:   1.3.0
 Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
@@ -227,7 +227,7 @@ rm -f %_localstatedir/PackageKit/upgrade_lock ||:
 
 %files -f PackageKit.lang
 %doc COPYING
-%doc README AUTHORS NEWS
+%doc README.md AUTHORS NEWS
 %dir %_datadir/PackageKit
 %dir %_datadir/PackageKit/helpers
 %dir %_sysconfdir/PackageKit
@@ -312,6 +312,10 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Mon Feb 03 2025 Dmitrii Fomchenkov <sirius@altlinux.org> 1.3.0-alt1
+- Updated to upstream version 1.3.0
+- Added package changelog output for the given package.
+
 * Fri Jan 24 2025 Ivan Zakharyaschev <imz@altlinux.org> 1.2.6-alt1
 - v1.2.6 (with the "support for Packages signal to emit many packages at once").
 - Ensured that it builds on e2k.
