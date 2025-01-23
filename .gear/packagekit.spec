@@ -114,6 +114,19 @@ Python3 backend for PackageKit.
 %ifarch %e2k
 # workaround for EDG frontend
 sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/apt/apt-{utils,job}.cpp
+
+# Explanation: The workaround is needed only for C++:
+#
+# lcc: "/usr/include/glib-2.0/glib/gmacros.h", line 1365: warning #3330:
+#           attribute "cleanup" is not yet supported in C++ mode
+#           [-Wignored-attribute-cleanup]
+#     __attribute__((cleanup(func))) \
+#                    ^
+#  in expansion of macro "_GLIB_CLEANUP" at line 1473
+#  in expansion of macro "g_autofree" at line 755 of
+#
+# Let's catch the missed problems:
+%add_optflags -Werror=ignored-attribute-cleanup
 %endif
 
 %build
