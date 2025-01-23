@@ -322,27 +322,49 @@ GPtrArray* getBugzillaUrls(const string &changelog)
 {
     GPtrArray *bugzilla_urls = g_ptr_array_new();
 
-    // Matches Ubuntu bugs
-    GRegex *regex;
+    // Matches ALT Linux bugs
+    GRegex *regex,
+           *bug_num_re;
     GMatchInfo *match_info;
-    regex = g_regex_new("LP:\\s+(?:[,\\s*]?#(?'bug'\\d+))*",
+    regex = g_regex_new("\\((?:closes:|alt(?:\\s+bug)?)\\s+(?'bugs'(?:[#,]?[\\d\\s]+)+)\\)",
+
                         G_REGEX_CASELESS,
                         G_REGEX_MATCH_NEWLINE_ANY,
                         0);
+    bug_num_re = g_regex_new("(?'bug'\\d+)",
+                             G_REGEX_OPTIMIZE,
+                             G_REGEX_MATCH_DEFAULT,
+                             0);
+
     g_regex_match (regex, changelog.c_str(), G_REGEX_MATCH_NEWLINE_ANY, &match_info);
     while (g_match_info_matches(match_info)) {
-        gchar *bug = g_match_info_fetch_named(match_info, "bug");
-        gchar *bugLink;
+        gchar *bugs = g_match_info_fetch_named(match_info, "bugs");
 
-        bugLink = g_strdup_printf("https://bugs.launchpad.net/bugs/%s", bug);
-        g_ptr_array_add(bugzilla_urls, (gpointer) bugLink);
+        GMatchInfo *bug_num_minfo;
+        g_regex_match(bug_num_re, bugs, G_REGEX_MATCH_DEFAULT, &bug_num_minfo);
+        while (g_match_info_matches(bug_num_minfo)) {
+            gchar *bug = g_match_info_fetch_named(bug_num_minfo, "bug");
+            gchar *bugLink;
 
-        g_free(bug);
+            bugLink = g_strdup_printf("https://bugzilla.altlinux.org/%s", bug);
+            g_ptr_array_add(bugzilla_urls, (gpointer) bugLink);
+
+            g_free(bug);
+            g_match_info_next(bug_num_minfo, NULL);
+        }
+
+        g_match_info_free(bug_num_minfo);
+
+        g_free(bugs);
         g_match_info_next(match_info, NULL);
     }
+
+    g_regex_unref(bug_num_re);
+
     g_match_info_free(match_info);
     g_regex_unref(regex);
 
+#if 0
     // Debian bugs
     // Regular expressions to detect bug numbers in changelogs according to the
     // Debian Policy Chapter 4.4. For details see the footnote 15:
@@ -376,6 +398,7 @@ GPtrArray* getBugzillaUrls(const string &changelog)
     }
     g_match_info_free(match_info);
     g_regex_unref(regex);
+#endif
 
     // NULL terminate
     g_ptr_array_add(bugzilla_urls, NULL);
