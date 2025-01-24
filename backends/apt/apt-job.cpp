@@ -427,7 +427,7 @@ void AptJob::stagePackageForEmit(GPtrArray *array, const pkgCache::VerIterator &
 
     if (!pk_package_set_id (pk_package, package_id, &local_error)) {
         g_warning ("package_id %s invalid and cannot be processed: %s",
-               package_id, local_error->message);
+                   static_cast<const gchar*>(package_id), local_error->message);
         return;
     }
 
