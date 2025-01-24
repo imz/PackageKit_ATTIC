@@ -5,7 +5,7 @@
 
 Summary:   Package management service
 Name:      packagekit
-Version:   1.2.5.0.0.36
+Version:   1.2.6
 Release:   alt1
 License:   LGPL-2.1+
 Group:     Other
@@ -312,6 +312,10 @@ Immediately test PackageKit when installing this package.
 
 
 %changelog
+* Fri Jan 24 2025 Ivan Zakharyaschev <imz@altlinux.org> 1.2.6-alt1
+- v1.2.6 (with the "support for Packages signal to emit many packages at once").
+- Ensured that it builds on e2k.
+
 * Wed Jan 22 2025 Ivan Zakharyaschev <imz@altlinux.org> 1.2.5.0.0.36-alt1
 - Rebased onto upstream b233f3634 (apt: Generate logging output properly).
 - Tiny adaptions and enhancements to the source code driven by compiler
