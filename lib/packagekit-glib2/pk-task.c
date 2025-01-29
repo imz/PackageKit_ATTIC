@@ -47,7 +47,7 @@ static void     pk_task_finalize	(GObject     *object);
  **/
 struct _PkTaskPrivate
 {
-	GPtrArray			*array;
+	GHashTable			*gtasks; /* uint, GTask* */
 	gboolean			 simulate;
 	gboolean			 only_download;
 	gboolean			 only_trusted;
@@ -83,11 +83,7 @@ typedef struct {
 	gboolean			 allow_deps;
 	gboolean			 autoremove;
 	gchar				**files;
-	GSimpleAsyncResult		*res;
 	PkResults			*results;
-	gboolean			 ret;
-	PkTask				*task;
-	GCancellable			*cancellable;
 	PkProgressCallback		 progress_callback;
 	gpointer			 progress_user_data;
 	gboolean			 enabled;
@@ -106,7 +102,7 @@ typedef struct {
 
 G_DEFINE_TYPE (PkTask, pk_task, PK_TYPE_CLIENT)
 
-static void pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state);
+static void pk_task_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data);
 
 /*
  * pk_task_generate_request_id:
@@ -121,54 +117,23 @@ pk_task_generate_request_id (void)
 /*
  * pk_task_find_by_request:
  **/
-static PkTaskState *
+static inline GTask *
 pk_task_find_by_request (PkTask *task, guint request)
 {
-	PkTaskState *item;
-	guint i;
-	GPtrArray *array;
-
 	g_return_val_if_fail (PK_IS_TASK (task), NULL);
 	g_return_val_if_fail (request != 0, NULL);
 
-	array = task->priv->array;
-	for (i = 0; i < array->len; i++) {
-		item = g_ptr_array_index (array, i);
-		if (item->request == request)
-			return item;
-	}
-	return NULL;
+	return g_hash_table_lookup (task->priv->gtasks, GUINT_TO_POINTER (request));
 }
 
 /*
  * pk_task_generic_state_finish:
  **/
 static void
-pk_task_generic_state_finish (PkTaskState *state, const GError *error)
+pk_task_state_free (gpointer task_state)
 {
-	/* get result */
-	if (state->ret) {
-		g_simple_async_result_set_op_res_gpointer (state->res,
-							   g_object_ref ((GObject*) state->results),
-							   g_object_unref);
-	} else {
-		g_simple_async_result_set_from_error (state->res, error);
-	}
+	PkTaskState *state = task_state;
 
-	/* complete */
-	g_simple_async_result_complete_in_idle (state->res);
-
-	/* remove from list */
-	g_debug ("remove state %p", state);
-	g_ptr_array_remove (state->task->priv->array, state);
-
-	/* deallocate */
-	if (state->cancellable != NULL)
-		g_object_unref (state->cancellable);
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
 	if (state->retry_id != 0)
 		g_source_remove (state->retry_id);
 	g_free (state->directory);
@@ -179,8 +144,6 @@ pk_task_generic_state_finish (PkTaskState *state, const GError *error)
 	g_strfreev (state->package_ids);
 	g_strfreev (state->packages);
 	g_strfreev (state->values);
-	g_object_unref (state->res);
-	g_object_unref (state->task);
 	g_slice_free (PkTaskState, state);
 }
 
@@ -188,8 +151,11 @@ pk_task_generic_state_finish (PkTaskState *state, const GError *error)
  * pk_task_do_async_action:
  **/
 static void
-pk_task_do_async_action (PkTaskState *state)
+pk_task_do_async_action (GTask *gtask)
 {
+	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskState *state = g_task_get_task_data (gtask);
+	GCancellable *cancellable = g_task_get_cancellable (gtask);
 	PkBitfield transaction_flags;
 
 	/* so the callback knows if we are serious or not */
@@ -197,122 +163,122 @@ pk_task_do_async_action (PkTaskState *state)
 
 	/* only prepare the transaction */
 	transaction_flags = state->transaction_flags;
-	if (state->task->priv->only_download) {
+	if (task->priv->only_download) {
 		pk_bitfield_add (transaction_flags,
 				 PK_TRANSACTION_FLAG_ENUM_ONLY_DOWNLOAD);
 	}
-	if (state->task->priv->allow_reinstall) {
+	if (task->priv->allow_reinstall) {
 		pk_bitfield_add (transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL);
 	}
-	if (state->task->priv->allow_downgrade) {
+	if (task->priv->allow_downgrade) {
 		pk_bitfield_add (transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE);
 	}
 
 	/* do the correct action */
 	if (state->role == PK_ROLE_ENUM_INSTALL_PACKAGES) {
-		pk_client_install_packages_async (PK_CLIENT(state->task), transaction_flags, state->package_ids,
-						  state->cancellable, state->progress_callback, state->progress_user_data,
-						  (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_install_packages_async (PK_CLIENT(task), transaction_flags, state->package_ids,
+						  cancellable, state->progress_callback, state->progress_user_data,
+						  pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_UPDATE_PACKAGES) {
-		pk_client_update_packages_async (PK_CLIENT(state->task), transaction_flags, state->package_ids,
-						 state->cancellable, state->progress_callback, state->progress_user_data,
-						 (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_update_packages_async (PK_CLIENT(task), transaction_flags, state->package_ids,
+						 cancellable, state->progress_callback, state->progress_user_data,
+						 pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
-		pk_client_remove_packages_async (PK_CLIENT(state->task),
+		pk_client_remove_packages_async (PK_CLIENT(task),
 						 transaction_flags,
 						 state->package_ids,
 						 state->allow_deps,
 						 state->autoremove,
-						 state->cancellable,
+						 cancellable,
 						 state->progress_callback,
 						 state->progress_user_data,
-						 (GAsyncReadyCallback) pk_task_ready_cb, state);
+						 pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_INSTALL_FILES) {
-		pk_client_install_files_async (PK_CLIENT(state->task), transaction_flags, state->files,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_install_files_async (PK_CLIENT(task), transaction_flags, state->files,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_RESOLVE) {
-		pk_client_resolve_async (PK_CLIENT(state->task), state->filters, state->packages,
-					 state->cancellable, state->progress_callback, state->progress_user_data,
-					 (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_resolve_async (PK_CLIENT(task), state->filters, state->packages,
+					 cancellable, state->progress_callback, state->progress_user_data,
+					 pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_SEARCH_NAME) {
-		pk_client_search_names_async (PK_CLIENT(state->task), state->filters, state->values,
-					      state->cancellable, state->progress_callback, state->progress_user_data,
-					      (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_search_names_async (PK_CLIENT(task), state->filters, state->values,
+					      cancellable, state->progress_callback, state->progress_user_data,
+					      pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_SEARCH_DETAILS) {
-		pk_client_search_details_async (PK_CLIENT(state->task), state->filters, state->values,
-						state->cancellable, state->progress_callback, state->progress_user_data,
-						(GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_search_details_async (PK_CLIENT(task), state->filters, state->values,
+						cancellable, state->progress_callback, state->progress_user_data,
+						pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_SEARCH_GROUP) {
-		pk_client_search_groups_async (PK_CLIENT(state->task), state->filters, state->values,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_search_groups_async (PK_CLIENT(task), state->filters, state->values,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_SEARCH_FILE) {
-		pk_client_search_files_async (PK_CLIENT(state->task), state->filters, state->values,
-					      state->cancellable, state->progress_callback, state->progress_user_data,
-					      (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_search_files_async (PK_CLIENT(task), state->filters, state->values,
+					      cancellable, state->progress_callback, state->progress_user_data,
+					      pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_DETAILS) {
-		pk_client_get_details_async (PK_CLIENT(state->task), state->package_ids,
-					     state->cancellable, state->progress_callback, state->progress_user_data,
-					     (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_details_async (PK_CLIENT(task), state->package_ids,
+					     cancellable, state->progress_callback, state->progress_user_data,
+					     pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_UPDATE_DETAIL) {
-		pk_client_get_update_detail_async (PK_CLIENT(state->task), state->package_ids,
-						   state->cancellable, state->progress_callback, state->progress_user_data,
-						   (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_update_detail_async (PK_CLIENT(task), state->package_ids,
+						   cancellable, state->progress_callback, state->progress_user_data,
+						   pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_DOWNLOAD_PACKAGES) {
-		pk_client_download_packages_async (PK_CLIENT(state->task), state->package_ids, state->directory,
-						   state->cancellable, state->progress_callback, state->progress_user_data,
-						   (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_download_packages_async (PK_CLIENT(task), state->package_ids, state->directory,
+						   cancellable, state->progress_callback, state->progress_user_data,
+						   pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_UPDATES) {
-		pk_client_get_updates_async (PK_CLIENT(state->task), state->filters,
-					     state->cancellable, state->progress_callback, state->progress_user_data,
-					     (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_updates_async (PK_CLIENT(task), state->filters,
+					     cancellable, state->progress_callback, state->progress_user_data,
+					     pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_DEPENDS_ON) {
-		pk_client_depends_on_async (PK_CLIENT(state->task), state->filters, state->package_ids, state->recursive,
-					     state->cancellable, state->progress_callback, state->progress_user_data,
-					     (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_depends_on_async (PK_CLIENT(task), state->filters, state->package_ids, state->recursive,
+					     cancellable, state->progress_callback, state->progress_user_data,
+					     pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_PACKAGES) {
-		pk_client_get_packages_async (PK_CLIENT(state->task), state->filters,
-					      state->cancellable, state->progress_callback, state->progress_user_data,
-					      (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_packages_async (PK_CLIENT(task), state->filters,
+					      cancellable, state->progress_callback, state->progress_user_data,
+					      pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REQUIRED_BY) {
-		pk_client_required_by_async (PK_CLIENT(state->task), state->filters, state->package_ids, state->recursive,
-					      state->cancellable, state->progress_callback, state->progress_user_data,
-					      (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_required_by_async (PK_CLIENT(task), state->filters, state->package_ids, state->recursive,
+					      cancellable, state->progress_callback, state->progress_user_data,
+					      pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_WHAT_PROVIDES) {
-		pk_client_what_provides_async (PK_CLIENT(state->task), state->filters, state->values,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_what_provides_async (PK_CLIENT(task), state->filters, state->values,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_FILES) {
-		pk_client_get_files_async (PK_CLIENT(state->task), state->package_ids,
-					   state->cancellable, state->progress_callback, state->progress_user_data,
-					   (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_files_async (PK_CLIENT(task), state->package_ids,
+					   cancellable, state->progress_callback, state->progress_user_data,
+					   pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_CATEGORIES) {
-		pk_client_get_categories_async (PK_CLIENT(state->task),
-						state->cancellable, state->progress_callback, state->progress_user_data,
-						(GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_categories_async (PK_CLIENT(task),
+						cancellable, state->progress_callback, state->progress_user_data,
+						pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REFRESH_CACHE) {
-		pk_client_refresh_cache_async (PK_CLIENT(state->task), state->force,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_refresh_cache_async (PK_CLIENT(task), state->force,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_GET_REPO_LIST) {
-		pk_client_get_repo_list_async (PK_CLIENT(state->task), state->filters,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_get_repo_list_async (PK_CLIENT(task), state->filters,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REPO_ENABLE) {
-		pk_client_repo_enable_async (PK_CLIENT(state->task), state->repo_id, state->enabled,
-					     state->cancellable, state->progress_callback, state->progress_user_data,
-					     (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_repo_enable_async (PK_CLIENT(task), state->repo_id, state->enabled,
+					     cancellable, state->progress_callback, state->progress_user_data,
+					     pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_UPGRADE_SYSTEM) {
-		pk_client_upgrade_system_async (PK_CLIENT(state->task), transaction_flags, state->distro_id, state->upgrade_kind,
-						state->cancellable, state->progress_callback, state->progress_user_data,
-						(GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_upgrade_system_async (PK_CLIENT(task), transaction_flags, state->distro_id, state->upgrade_kind,
+						cancellable, state->progress_callback, state->progress_user_data,
+						pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REPAIR_SYSTEM) {
-		pk_client_repair_system_async (PK_CLIENT(state->task), transaction_flags,
-					       state->cancellable, state->progress_callback, state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_ready_cb, state);
+		pk_client_repair_system_async (PK_CLIENT(task), transaction_flags,
+					       cancellable, state->progress_callback, state->progress_user_data,
+					       pk_task_ready_cb, g_steal_pointer (&gtask));
 	} else {
 		g_assert_not_reached ();
 	}
@@ -335,43 +301,38 @@ pk_task_package_filter_cb (PkPackage *package, gpointer user_data)
 	return TRUE;
 }
 
-static void pk_task_do_async_simulate_action (PkTaskState *state);
+static void pk_task_do_async_simulate_action (GTask *gtask);
 
 /*
  * pk_task_simulate_ready_cb:
  **/
 static void
-pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
+pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-	PkTaskClass *klass = PK_TASK_GET_CLASS (state->task);
+	g_autoptr(GTask) gtask = G_TASK (user_data);
 	g_autoptr(GError) error = NULL;
 	g_autoptr(PkPackageSack) sack = NULL;
 	g_autoptr(PkPackageSack) untrusted_sack = NULL;
-	g_autoptr(PkResults) results = NULL;
+	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskState *state = g_task_get_task_data (gtask);
 
 	/* old results no longer valid */
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
+	g_clear_object (&state->results);
 
 	/* get the results */
-	results = pk_client_generic_finish (PK_CLIENT(state->task), res, &error);
-	if (results == NULL) {
+	state->results = pk_client_generic_finish (PK_CLIENT(source_object), res, &error);
+	if (state->results == NULL) {
 
 		/* handle case where this is not implemented */
 		if (error->code == PK_CLIENT_ERROR_NOT_SUPPORTED) {
-			pk_task_do_async_action (state);
-				return;
+			pk_task_do_async_action (g_steal_pointer (&gtask));
+			return;
 		}
 
 		/* just abort */
-		pk_task_generic_state_finish (state, error);
+		g_task_return_error (gtask, g_steal_pointer (&error));
 		return;
 	}
-
-	/* we own a copy now */
-	state->results = g_object_ref (results);
 
 	/* get exit code */
 	state->exit_enum = pk_results_get_exit_code (state->results);
@@ -380,7 +341,7 @@ pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskStat
 		pk_bitfield_remove (state->transaction_flags,
 				    PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 		/* retry this */
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 		return;
 	}
 
@@ -388,13 +349,12 @@ pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskStat
 		/* we 'fail' with success so the application gets a
 		 * chance to process the PackageKit-specific
 		 * ErrorCode enumerated value and detail. */
-		state->ret = TRUE;
-		pk_task_generic_state_finish (state, NULL);
+		g_task_return_pointer (gtask, g_steal_pointer (&state->results), g_object_unref);
 		return;
 	}
 
 	/* get data */
-	sack = pk_results_get_package_sack (results);
+	sack = pk_results_get_package_sack (state->results);
 
 	/* if we did a simulate and we got a message that a package was untrusted,
 	 * there's no point trying to do the action with only-trusted */
@@ -406,11 +366,11 @@ pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskStat
 	}
 
 	/* remove all the packages we want to ignore */
-	pk_package_sack_remove_by_filter (sack, pk_task_package_filter_cb, state);
+	pk_package_sack_remove_by_filter (sack, pk_task_package_filter_cb, NULL);
 
 	/* no results from simulate */
 	if (pk_package_sack_get_size (sack) == 0) {
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 		return;
 	}
 
@@ -418,15 +378,18 @@ pk_task_simulate_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskStat
 	pk_package_sack_sort (sack, PK_PACKAGE_SACK_SORT_TYPE_INFO);
 
 	/* run the callback */
-	klass->simulate_question (state->task, state->request, state->results);
+	PK_TASK_GET_CLASS (task)->simulate_question (task, state->request, state->results);
 }
 
 /*
  * pk_task_do_async_simulate_action:
  **/
 static void
-pk_task_do_async_simulate_action (PkTaskState *state)
+pk_task_do_async_simulate_action (GTask *gtask)
 {
+	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskState *state = g_task_get_task_data (gtask);
+	GCancellable *cancellable = g_task_get_cancellable (gtask);
 	PkBitfield transaction_flags = state->transaction_flags;
 
 	/* so the callback knows if we are serious or not */
@@ -437,71 +400,71 @@ pk_task_do_async_simulate_action (PkTaskState *state)
 	if (state->role == PK_ROLE_ENUM_INSTALL_PACKAGES) {
 		/* simulate install async */
 		g_debug ("doing install");
-		pk_client_install_packages_async (PK_CLIENT(state->task),
+		pk_client_install_packages_async (PK_CLIENT(task),
 						  transaction_flags,
 						  state->package_ids,
-						  state->cancellable,
+						  cancellable,
 						  state->progress_callback,
 						  state->progress_user_data,
-						  (GAsyncReadyCallback) pk_task_simulate_ready_cb,
-						  state);
+						  pk_task_simulate_ready_cb,
+						  g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_UPDATE_PACKAGES) {
 		/* simulate update async */
 		g_debug ("doing update");
-		pk_client_update_packages_async (PK_CLIENT(state->task),
+		pk_client_update_packages_async (PK_CLIENT(task),
 						 transaction_flags,
 						 state->package_ids,
-						 state->cancellable,
+						 cancellable,
 						 state->progress_callback,
 						 state->progress_user_data,
-						 (GAsyncReadyCallback) pk_task_simulate_ready_cb,
-						 state);
+						 pk_task_simulate_ready_cb,
+						 g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
 		/* simulate remove async */
 		g_debug ("doing remove");
-		pk_client_remove_packages_async (PK_CLIENT(state->task),
+		pk_client_remove_packages_async (PK_CLIENT(task),
 						 transaction_flags,
 						 state->package_ids,
 						 state->allow_deps,
 						 state->autoremove,
-						 state->cancellable,
+						 cancellable,
 						 state->progress_callback,
 						 state->progress_user_data,
-						 (GAsyncReadyCallback) pk_task_simulate_ready_cb,
-						 state);
+						 pk_task_simulate_ready_cb,
+						 g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_INSTALL_FILES) {
 		/* simulate install async */
 		g_debug ("doing install files");
-		pk_client_install_files_async (PK_CLIENT(state->task),
+		pk_client_install_files_async (PK_CLIENT(task),
 					       transaction_flags,
 					       state->files,
-					       state->cancellable,
+					       cancellable,
 					       state->progress_callback,
 					       state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_simulate_ready_cb,
-					       state);
+					       pk_task_simulate_ready_cb,
+					       g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_UPGRADE_SYSTEM) {
 		/* simulate upgrade system async */
 		g_debug ("doing upgrade system");
-		pk_client_upgrade_system_async (PK_CLIENT(state->task),
+		pk_client_upgrade_system_async (PK_CLIENT(task),
 						transaction_flags,
 						state->distro_id,
 						state->upgrade_kind,
-						state->cancellable,
+						cancellable,
 						state->progress_callback,
 						state->progress_user_data,
-						(GAsyncReadyCallback) pk_task_simulate_ready_cb,
-						state);
+						pk_task_simulate_ready_cb,
+						g_steal_pointer (&gtask));
 	} else if (state->role == PK_ROLE_ENUM_REPAIR_SYSTEM) {
 		/* simulate repair system async */
 		g_debug ("doing repair system");
-		pk_client_repair_system_async (PK_CLIENT(state->task),
+		pk_client_repair_system_async (PK_CLIENT(task),
 					       transaction_flags,
-					       state->cancellable,
+					       cancellable,
 					       state->progress_callback,
 					       state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_simulate_ready_cb,
-					       state);
+					       pk_task_simulate_ready_cb,
+					       g_steal_pointer (&gtask));
 	} else {
 		g_assert_not_reached ();
 	}
@@ -511,27 +474,22 @@ pk_task_do_async_simulate_action (PkTaskState *state)
  * pk_task_install_signatures_ready_cb:
  **/
 static void
-pk_task_install_signatures_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
+pk_task_install_signatures_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
+	g_autoptr(GTask) gtask = G_TASK (user_data);
 	PkTask *task = PK_TASK (source_object);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	g_autoptr(GError) error = NULL;
-	g_autoptr(PkResults) results = NULL;
 
 	/* old results no longer valid */
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
+	g_clear_object (&state->results);
 
 	/* get the results */
-	results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
-	if (results == NULL) {
-		pk_task_generic_state_finish (state, error);
+	state->results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
+	if (state->results == NULL) {
+		g_task_return_error (gtask, g_steal_pointer (&error));
 		return;
 	}
-
-	/* we own a copy now */
-	state->results = g_object_ref (results);
 
 	/* get exit code */
 	state->exit_enum = pk_results_get_exit_code (state->results);
@@ -541,47 +499,52 @@ pk_task_install_signatures_ready_cb (GObject *source_object, GAsyncResult *res, 
 		g_autoptr(PkError) error_code = NULL;
 		error_code = pk_results_get_error_code (state->results);
 		/* TODO: convert the PkErrorEnum to a PK_CLIENT_ERROR_* enum */
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "failed to install signature: %s", pk_error_get_details (error_code));
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "failed to install signature: %s",
+					 pk_error_get_details (error_code));
 		return;
 	}
 
 	/* now try the action again */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /*
  * pk_task_install_signatures:
  **/
 static void
-pk_task_install_signatures (PkTaskState *state)
+pk_task_install_signatures (GTask *given_gtask)
 {
+	g_autoptr(GTask) gtask = given_gtask;
+	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	PkRepoSignatureRequired *item;
 	PkSigTypeEnum type;
 	g_autoptr(GError) error = NULL;
 	g_autofree gchar *key_id = NULL;
 	g_autofree gchar *package_id = NULL;
 	g_autoptr(GPtrArray) array = NULL;
+	GCancellable *cancellable;
 
 	/* get results */
 	array = pk_results_get_repo_signature_required_array (state->results);
 	if (array == NULL || array->len == 0) {
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "no signatures to install");
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "no signatures to install");
 		return;
 	}
 
 	/* did we get more than result? */
 	if (array->len > 1) {
 		/* TODO: support more than one signature */
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "more than one signature to install");
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "more than one signature to install");
 		return;
 	}
 
@@ -594,36 +557,32 @@ pk_task_install_signatures (PkTaskState *state)
 		      NULL);
 
 	/* do new async method */
-	pk_client_install_signature_async (PK_CLIENT(state->task), type, key_id, package_id,
-					   state->cancellable, state->progress_callback, state->progress_user_data,
-					   (GAsyncReadyCallback) pk_task_install_signatures_ready_cb, state);
+	cancellable = g_task_get_cancellable (gtask);
+	pk_client_install_signature_async (PK_CLIENT(task), type, key_id, package_id,
+					   cancellable, state->progress_callback, state->progress_user_data,
+					   pk_task_install_signatures_ready_cb, g_steal_pointer (&gtask));
 }
 
 /*
  * pk_task_accept_eulas_ready_cb:
  **/
 static void
-pk_task_accept_eulas_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
+pk_task_accept_eulas_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
+	g_autoptr(GTask) gtask = G_TASK (user_data);
 	PkTask *task = PK_TASK (source_object);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	g_autoptr(GError) error = NULL;
-	g_autoptr(PkResults) results = NULL;
 
 	/* old results no longer valid */
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
+	g_clear_object (&state->results);
 
 	/* get the results */
-	results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
-	if (results == NULL) {
-		pk_task_generic_state_finish (state, error);
+	state->results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
+	if (state->results == NULL) {
+		g_task_return_error (gtask, g_steal_pointer (&error));
 		return;
 	}
-
-	/* we own a copy now */
-	state->results = g_object_ref (results);
 
 	/* get exit code */
 	state->exit_enum = pk_results_get_exit_code (state->results);
@@ -633,45 +592,50 @@ pk_task_accept_eulas_ready_cb (GObject *source_object, GAsyncResult *res, PkTask
 		g_autoptr(PkError) error_code = NULL;
 		error_code = pk_results_get_error_code (state->results);
 		/* TODO: convert the PkErrorEnum to a PK_CLIENT_ERROR_* enum */
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "failed to accept eula: %s", pk_error_get_details (error_code));
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "failed to accept eula: %s",
+					 pk_error_get_details (error_code));
 		return;
 	}
 
 	/* now try the action again */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /*
  * pk_task_accept_eulas:
  **/
 static void
-pk_task_accept_eulas (PkTaskState *state)
+pk_task_accept_eulas (GTask *given_gtask)
 {
+	g_autoptr(GTask) gtask = given_gtask;
+	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	PkEulaRequired *item;
 	g_autoptr(GError) error = NULL;
 	const gchar *eula_id;
 	g_autoptr(GPtrArray) array = NULL;
+	GCancellable *cancellable;
 
 	/* get results */
 	array = pk_results_get_eula_required_array (state->results);
 	if (array == NULL || array->len == 0) {
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "no eulas to accept");
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "no eulas to accept");
 		return;
 	}
 
 	/* did we get more than result? */
 	if (array->len > 1) {
 		/* TODO: support more than one eula */
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_FAILED, "more than one eula to accept");
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "more than one eula to accept");
 		return;
 	}
 
@@ -680,36 +644,32 @@ pk_task_accept_eulas (PkTaskState *state)
 	eula_id = pk_eula_required_get_eula_id (item);
 
 	/* do new async method */
-	pk_client_accept_eula_async (PK_CLIENT(state->task), eula_id,
-				     state->cancellable, state->progress_callback, state->progress_user_data,
-				     (GAsyncReadyCallback) pk_task_accept_eulas_ready_cb, state);
+	cancellable = g_task_get_cancellable (gtask);
+	pk_client_accept_eula_async (PK_CLIENT(task), eula_id,
+				     cancellable, state->progress_callback, state->progress_user_data,
+				     pk_task_accept_eulas_ready_cb, g_steal_pointer (&gtask));
 }
 
 /*
  * pk_task_repair_ready_cb:
  **/
 static void
-pk_task_repair_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
+pk_task_repair_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
+	g_autoptr(GTask) gtask = G_TASK (user_data);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	PkTask *task = PK_TASK (source_object);
 	g_autoptr(GError) error = NULL;
-	g_autoptr(PkResults) results = NULL;
 
 	/* old results no longer valid */
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
+	g_clear_object (&state->results);
 
 	/* get the results */
-	results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
-	if (results == NULL) {
-		pk_task_generic_state_finish (state, error);
+	state->results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
+	if (state->results == NULL) {
+		g_task_return_error (gtask, g_steal_pointer (&error));
 		return;
 	}
-
-	/* we own a copy now */
-	state->results = g_object_ref (results);
 
 	/* get exit code */
 	state->exit_enum = pk_results_get_exit_code (state->results);
@@ -719,53 +679,58 @@ pk_task_repair_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState 
 		g_autoptr(PkError) error_code = NULL;
 		error_code = pk_results_get_error_code (state->results);
 		/* TODO: convert the PkErrorEnum to a PK_CLIENT_ERROR_* enum */
-		error = g_error_new (PK_CLIENT_ERROR,
-				     PK_CLIENT_ERROR_FAILED,
-				     "failed to repair: %s",
-				     pk_error_get_details (error_code));
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR,
+					 PK_CLIENT_ERROR_FAILED,
+					 "failed to repair: %s",
+					 pk_error_get_details (error_code));
 		return;
 	}
 
 	/* now try the action again */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /*
  * pk_task_user_accepted_idle_cb:
  **/
 static gboolean
-pk_task_user_accepted_idle_cb (PkTaskState *state)
+pk_task_user_accepted_idle_cb (gpointer user_data)
 {
+	g_autoptr(GTask) gtask = user_data;
+	PkTaskState *state = g_task_get_task_data (gtask);
+
 	/* this needs another step in the dance */
 	if (state->exit_enum == PK_EXIT_ENUM_KEY_REQUIRED) {
 		g_debug ("need to do install-sig");
-		pk_task_install_signatures (state);
+		pk_task_install_signatures (g_steal_pointer (&gtask));
 		return FALSE;
 	}
 
 	/* this needs another step in the dance */
 	if (state->exit_enum == PK_EXIT_ENUM_EULA_REQUIRED) {
 		g_debug ("need to do accept-eula");
-		pk_task_accept_eulas (state);
+		pk_task_accept_eulas (g_steal_pointer (&gtask));
 		return FALSE;
 	}
 
 	/* this needs another step in the dance */
 	if (state->exit_enum == PK_EXIT_ENUM_REPAIR_REQUIRED) {
+		GCancellable *cancellable = g_task_get_cancellable (gtask);
+		PkTask *task = g_task_get_source_object (gtask);
 		g_debug ("need to do repair");
-		pk_client_repair_system_async (PK_CLIENT(state->task),
+		pk_client_repair_system_async (PK_CLIENT(task),
 					       pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_NONE),
-					       state->cancellable,
+					       cancellable,
 					       state->progress_callback,
 					       state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_repair_ready_cb, state);
+					       (GAsyncReadyCallback) pk_task_repair_ready_cb, g_steal_pointer (&gtask));
 		return FALSE;
 	}
 
 	/* doing task */
 	g_debug ("continuing with request %i", state->request);
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 	return FALSE;
 }
 
@@ -783,18 +748,18 @@ pk_task_user_accepted_idle_cb (PkTaskState *state)
 gboolean
 pk_task_user_accepted (PkTask *task, guint request)
 {
-	PkTaskState *state;
+	GTask *gtask;
 	GSource *idle_source;
 
 	/* get the not-yet-completed request */
-	state = pk_task_find_by_request (task, request);
-	if (state == NULL) {
+	gtask = pk_task_find_by_request (task, request);
+	if (gtask == NULL) {
 		g_warning ("request %i not found", request);
 		return FALSE;
 	}
 
 	idle_source = g_idle_source_new ();
-	g_source_set_callback (idle_source, G_SOURCE_FUNC (pk_task_user_accepted_idle_cb), state, NULL);
+	g_source_set_callback (idle_source, G_SOURCE_FUNC (pk_task_user_accepted_idle_cb), g_object_ref (gtask), g_object_unref);
 	g_source_set_name (idle_source, "[PkTask] user-accept");
 	g_source_attach (idle_source, g_main_context_get_thread_default ());
 	return TRUE;
@@ -804,25 +769,26 @@ pk_task_user_accepted (PkTask *task, guint request)
  * pk_task_user_declined_idle_cb:
  **/
 static gboolean
-pk_task_user_declined_idle_cb (PkTaskState *state)
+pk_task_user_declined_idle_cb (gpointer user_data)
 {
-	g_autoptr(GError) error = NULL;
+	g_autoptr(GTask) gtask = user_data;
+	PkTaskState *state;
+
+	state = g_task_get_task_data (gtask);
 
 	/* the introduction is finished */
 	if (state->simulate) {
-		g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_DECLINED_SIMULATION, "user declined simulation");
-		pk_task_generic_state_finish (state, error);
+		g_task_return_new_error (gtask,
+					 PK_CLIENT_ERROR, PK_CLIENT_ERROR_DECLINED_SIMULATION,
+					 "user declined simulation");
 		return FALSE;
 	}
 
 	/* doing task */
 	g_debug ("declined request %i", state->request);
-	g_set_error (&error,
-			     PK_CLIENT_ERROR,
-			     PK_CLIENT_ERROR_DECLINED_INTERACTION, "user declined interaction");
-	pk_task_generic_state_finish (state, error);
+	g_task_return_new_error (gtask,
+				 PK_CLIENT_ERROR, PK_CLIENT_ERROR_DECLINED_INTERACTION,
+				 "user declined interaction");
 	return FALSE;
 }
 
@@ -840,18 +806,18 @@ pk_task_user_declined_idle_cb (PkTaskState *state)
 gboolean
 pk_task_user_declined (PkTask *task, guint request)
 {
-	PkTaskState *state;
+	GTask *gtask;
 	GSource *idle_source;
 
 	/* get the not-yet-completed request */
-	state = pk_task_find_by_request (task, request);
-	if (state == NULL) {
+	gtask = pk_task_find_by_request (task, request);
+	if (gtask == NULL) {
 		g_warning ("request %i not found", request);
 		return FALSE;
 	}
 
 	idle_source = g_idle_source_new ();
-	g_source_set_callback (idle_source, G_SOURCE_FUNC (pk_task_user_declined_idle_cb), state, NULL);
+	g_source_set_callback (idle_source, G_SOURCE_FUNC (pk_task_user_declined_idle_cb), g_object_ref (gtask), g_object_unref);
 	g_source_set_name (idle_source, "[PkTask] user-accept");
 	g_source_attach (idle_source, g_main_context_get_thread_default ());
 	return TRUE;
@@ -863,39 +829,36 @@ pk_task_user_declined (PkTask *task, guint request)
 static gboolean
 pk_task_retry_cancelled_transaction_cb (gpointer user_data)
 {
-	PkTaskState *state = (PkTaskState *) user_data;
-	pk_task_do_async_action (state);
+	g_autoptr(GTask) gtask = G_TASK (user_data);
+	PkTaskState *state = g_task_get_task_data (gtask);
+
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 	state->retry_id = 0;
-	return FALSE;
+	return G_SOURCE_REMOVE;
 }
 
 /*
  * pk_task_ready_cb:
  **/
 static void
-pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
+pk_task_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
+	g_autoptr(GTask) gtask = G_TASK (user_data);
 	PkTask *task = PK_TASK (source_object);
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
+	PkTaskState *state = g_task_get_task_data (gtask);
 	gboolean interactive;
 	g_autoptr(GError) error = NULL;
-	g_autoptr(PkResults) results = NULL;
 
 	/* old results no longer valid */
-	if (state->results != NULL) {
-		g_object_unref (state->results);
-		state->results = NULL;
-	}
+	g_clear_object (&state->results);
 
 	/* get the results */
-	results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
-	if (results == NULL) {
-		pk_task_generic_state_finish (state, error);
+	state->results = pk_client_generic_finish (PK_CLIENT(task), res, &error);
+	if (state->results == NULL) {
+		g_task_return_error (gtask, g_steal_pointer (&error));
 		return;
 	}
-
-	/* we own a copy now */
-	state->results = g_object_ref (results);
 
 	/* get exit code */
 	state->exit_enum = pk_results_get_exit_code (state->results);
@@ -911,17 +874,16 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 		/* running non-interactive */
 		if (!interactive) {
 			g_debug ("working non-interactive, so calling accept");
-			pk_task_user_accepted (state->task, state->request);
+			pk_task_user_accepted (task, state->request);
 			return;
 		}
 
 		/* no support */
 		if (klass->untrusted_question == NULL) {
-			g_set_error (&error,
-				     PK_CLIENT_ERROR,
-				     PK_CLIENT_ERROR_NOT_SUPPORTED,
-				     "could not do untrusted question as no klass support");
-			pk_task_generic_state_finish (state, error);
+			g_task_return_new_error (gtask,
+						 PK_CLIENT_ERROR,
+						 PK_CLIENT_ERROR_NOT_SUPPORTED,
+						 "could not do untrusted question as no klass support");
 			return;
 		}
 
@@ -936,17 +898,16 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 		/* running non-interactive */
 		if (!interactive) {
 			g_debug ("working non-interactive, so calling accept");
-			pk_task_user_accepted (state->task, state->request);
+			pk_task_user_accepted (task, state->request);
 			return;
 		}
 
 		/* no support */
 		if (klass->key_question == NULL) {
-			g_set_error (&error,
-				     PK_CLIENT_ERROR,
-				     PK_CLIENT_ERROR_NOT_SUPPORTED,
-				     "could not do key question as no klass support");
-			pk_task_generic_state_finish (state, error);
+			g_task_return_new_error (gtask,
+						 PK_CLIENT_ERROR,
+						 PK_CLIENT_ERROR_NOT_SUPPORTED,
+						 "could not do key question as no klass support");
 			return;
 		}
 
@@ -961,16 +922,16 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 		/* running non-interactive */
 		if (!interactive) {
 			g_debug ("working non-interactive, so calling accept");
-			pk_task_user_accepted (state->task, state->request);
+			pk_task_user_accepted (task, state->request);
 			return;
 		}
 
 		/* no support */
 		if (klass->repair_question == NULL) {
-			error = g_error_new (PK_CLIENT_ERROR,
-					     PK_CLIENT_ERROR_NOT_SUPPORTED,
-					     "could not do repair question as no klass support");
-			pk_task_generic_state_finish (state, error);
+			g_task_return_new_error (gtask,
+						 PK_CLIENT_ERROR,
+						 PK_CLIENT_ERROR_NOT_SUPPORTED,
+						 "could not do repair question as no klass support");
 			return;
 		}
 
@@ -985,17 +946,16 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 		/* running non-interactive */
 		if (!interactive) {
 			g_debug ("working non-interactive, so calling accept");
-			pk_task_user_accepted (state->task, state->request);
+			pk_task_user_accepted (task, state->request);
 			return;
 		}
 
 		/* no support */
 		if (klass->eula_question == NULL) {
-			g_set_error (&error,
-				     PK_CLIENT_ERROR,
-				     PK_CLIENT_ERROR_NOT_SUPPORTED,
-				     "could not do eula question as no klass support");
-			pk_task_generic_state_finish (state, error);
+			g_task_return_new_error (gtask,
+						 PK_CLIENT_ERROR,
+						 PK_CLIENT_ERROR_NOT_SUPPORTED,
+						 "could not do eula question as no klass support");
 			return;
 		}
 
@@ -1010,17 +970,17 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 		/* running non-interactive */
 		if (!interactive) {
 			g_debug ("working non-interactive, so calling accept");
-			pk_task_user_accepted (state->task, state->request);
+			pk_task_user_accepted (task, state->request);
+			g_task_return_pointer (gtask, g_steal_pointer (&state->results), g_object_unref);
 			return;
 		}
 
 		/* no support */
 		if (klass->media_change_question == NULL) {
-			g_set_error (&error,
-				     PK_CLIENT_ERROR,
-				     PK_CLIENT_ERROR_NOT_SUPPORTED,
-				     "could not do media change question as no klass support");
-			pk_task_generic_state_finish (state, error);
+			g_task_return_new_error (gtask,
+						 PK_CLIENT_ERROR,
+						 PK_CLIENT_ERROR_NOT_SUPPORTED,
+						 "could not do media change question as no klass support");
 			return;
 		}
 
@@ -1033,19 +993,16 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, PkTaskState *state)
 	if (state->exit_enum == PK_EXIT_ENUM_CANCELLED_PRIORITY) {
 		state->retry_id = g_timeout_add (PK_TASK_TRANSACTION_CANCELLED_RETRY_TIMEOUT,
 						 pk_task_retry_cancelled_transaction_cb,
-						 state);
+						 g_steal_pointer (&gtask));
 		return;
 	}
 
-	/* we can't handle this, just finish the async method */
-	state->ret = TRUE;
-
 	/* we're done */
-	pk_task_generic_state_finish (state, NULL);
+	g_task_return_pointer (gtask, g_steal_pointer (&state->results), g_object_unref);
 }
 
 /**
- * pk_task_install_packages_async:
+ * pk_task_install_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1064,25 +1021,18 @@ pk_task_install_packages_async (PkTask *task, gchar **package_ids, GCancellable 
 				GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_INSTALL_PACKAGES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	if (task->priv->allow_reinstall) {
 		pk_bitfield_add (state->transaction_flags,
@@ -1095,18 +1045,21 @@ pk_task_install_packages_async (PkTask *task, gchar **package_ids, GCancellable 
 	state->package_ids = g_strdupv (package_ids);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_update_packages_async:
+ * pk_task_update_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1125,40 +1078,37 @@ pk_task_update_packages_async (PkTask *task, gchar **package_ids, GCancellable *
 			       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 
 	g_return_if_fail (PK_IS_CLIENT (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_update_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_UPDATE_PACKAGES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->package_ids = g_strdupv (package_ids);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_upgrade_system_async:
+ * pk_task_upgrade_system_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @distro_id: a distro ID such as "fedora-14"
  * @upgrade_kind: a #PkUpgradeKindEnum such as %PK_UPGRADE_KIND_ENUM_COMPLETE
@@ -1185,22 +1135,16 @@ pk_task_upgrade_system_async (PkTask *task,
                               GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 
 	g_return_if_fail (PK_IS_CLIENT (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_upgrade_system_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_UPGRADE_SYSTEM;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->distro_id = g_strdup (distro_id);
 	state->upgrade_kind = upgrade_kind;
@@ -1208,18 +1152,21 @@ pk_task_upgrade_system_async (PkTask *task,
 	state->progress_user_data = progress_user_data;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_upgrade_system_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_remove_packages_async:
+ * pk_task_remove_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @allow_deps: if other dependent packages are allowed to be removed from the computer
@@ -1242,22 +1189,16 @@ pk_task_remove_packages_async (PkTask *task, gchar **package_ids, gboolean allow
 			       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 
 	g_return_if_fail (PK_IS_CLIENT (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_remove_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_REMOVE_PACKAGES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->allow_deps = allow_deps;
 	state->autoremove = autoremove;
 	state->package_ids = g_strdupv (package_ids);
@@ -1265,18 +1206,21 @@ pk_task_remove_packages_async (PkTask *task, gchar **package_ids, gboolean allow
 	state->progress_user_data = progress_user_data;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_install_files_async:
+ * pk_task_install_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @files: (array zero-terminated=1): a file such as "/home/hughsie/Desktop/hal-devel-0.10.0.rpm"
  * @cancellable: a #GCancellable or %NULL
@@ -1296,22 +1240,16 @@ pk_task_install_files_async (PkTask *task, gchar **files, GCancellable *cancella
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 
 	g_return_if_fail (PK_IS_CLIENT (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_files_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_INSTALL_FILES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	if (task->priv->only_trusted)
 		state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	else
@@ -1321,18 +1259,21 @@ pk_task_install_files_async (PkTask *task, gchar **files, GCancellable *cancella
 	state->progress_user_data = progress_user_data;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_files_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_resolve_async:
+ * pk_task_resolve_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @packages: (array zero-terminated=1): package names to find
@@ -1352,45 +1293,41 @@ pk_task_resolve_async (PkTask *task, PkBitfield filters, gchar **packages, GCanc
 		       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_RESOLVE;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	
-	if (state->task->priv->allow_downgrade)
+	if (task->priv->allow_downgrade)
 		pk_bitfield_add (state->transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE);
-	if (state->task->priv->allow_reinstall)
+	if (task->priv->allow_reinstall)
 		pk_bitfield_add (state->transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL);
 	state->filters = filters;
 	state->packages = g_strdupv (packages);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_resolve_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_search_names_async:
+ * pk_task_search_names_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1410,38 +1347,34 @@ pk_task_search_names_async (PkTask *task, PkBitfield filters, gchar **values, GC
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_SEARCH_NAME;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->values = g_strdupv (values);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_search_names_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_search_details_async:
+ * pk_task_search_details_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1461,38 +1394,34 @@ pk_task_search_details_async (PkTask *task, PkBitfield filters, gchar **values, 
 			      GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_SEARCH_DETAILS;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->values = g_strdupv (values);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_search_details_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_search_groups_async:
+ * pk_task_search_groups_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1512,38 +1441,34 @@ pk_task_search_groups_async (PkTask *task, PkBitfield filters, gchar **values, G
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_SEARCH_GROUP;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->values = g_strdupv (values);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_search_groups_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_search_files_async:
+ * pk_task_search_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1563,38 +1488,34 @@ pk_task_search_files_async (PkTask *task, PkBitfield filters, gchar **values, GC
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_SEARCH_FILE;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->values = g_strdupv (values);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_files_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_details_async:
+ * pk_task_get_details_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1613,37 +1534,33 @@ pk_task_get_details_async (PkTask *task, gchar **package_ids, GCancellable *canc
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_DETAILS;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->package_ids = g_strdupv (package_ids);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_get_details_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_update_detail_async:
+ * pk_task_get_update_detail_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1662,37 +1579,33 @@ pk_task_get_update_detail_async (PkTask *task, gchar **package_ids, GCancellable
 				 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_UPDATE_DETAIL;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->package_ids = g_strdupv (package_ids);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_get_update_detail_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_download_packages_async:
+ * pk_task_download_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @directory: the destination directory
@@ -1712,38 +1625,34 @@ pk_task_download_packages_async (PkTask *task, gchar **package_ids, const gchar 
 				 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_DOWNLOAD_PACKAGES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->package_ids = g_strdupv (package_ids);
 	state->directory = g_strdup (directory);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_download_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_updates_async:
+ * pk_task_get_updates_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -1762,37 +1671,33 @@ pk_task_get_updates_async (PkTask *task, PkBitfield filters, GCancellable *cance
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_UPDATES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_get_updates_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_depends_on_async:
+ * pk_task_depends_on_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
@@ -1813,39 +1718,35 @@ pk_task_depends_on_async (PkTask *task, PkBitfield filters, gchar **package_ids,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_DEPENDS_ON;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->package_ids = g_strdupv (package_ids);
 	state->recursive = recursive;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_depends_on_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_packages_async:
+ * pk_task_get_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -1864,37 +1765,33 @@ pk_task_get_packages_async (PkTask *task, PkBitfield filters, GCancellable *canc
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_PACKAGES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_required_by_async:
+ * pk_task_required_by_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
@@ -1915,39 +1812,35 @@ pk_task_required_by_async (PkTask *task, PkBitfield filters, gchar **package_ids
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_REQUIRED_BY;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->package_ids = g_strdupv (package_ids);
 	state->recursive = recursive;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_what_provides_async:
+ * pk_task_what_provides_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): values to search for
@@ -1968,38 +1861,34 @@ pk_task_what_provides_async (PkTask *task, PkBitfield filters,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_WHAT_PROVIDES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->values = g_strdupv (values);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_files_async:
+ * pk_task_get_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -2018,37 +1907,33 @@ pk_task_get_files_async (PkTask *task, gchar **package_ids, GCancellable *cancel
 			 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_FILES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->package_ids = g_strdupv (package_ids);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_categories_async:
+ * pk_task_get_categories_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @cancellable: a #GCancellable or %NULL
  * @progress_callback: (scope notified): the function to run when the progress changes
@@ -2066,36 +1951,32 @@ pk_task_get_categories_async (PkTask *task, GCancellable *cancellable,
 			      GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_CATEGORIES;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_refresh_cache_async:
+ * pk_task_refresh_cache_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @force: if the metadata should be deleted and re-downloaded even if it is correct
  * @cancellable: a #GCancellable or %NULL
@@ -2114,37 +1995,33 @@ pk_task_refresh_cache_async (PkTask *task, gboolean force, GCancellable *cancell
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_REFRESH_CACHE;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->force = force;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_get_repo_list_async:
+ * pk_task_get_repo_list_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -2163,37 +2040,33 @@ pk_task_get_repo_list_async (PkTask *task, PkBitfield filters, GCancellable *can
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_GET_REPO_LIST;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->filters = filters;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_repo_enable_async:
+ * pk_task_repo_enable_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @repo_id: The software repository ID
  * @enabled: %TRUE or %FALSE
@@ -2213,38 +2086,34 @@ pk_task_repo_enable_async (PkTask *task, const gchar *repo_id, gboolean enabled,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
 	PkTaskState *state;
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_TASK (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_install_packages_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_REPO_ENABLE;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
-	state->ret = FALSE;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->repo_id = g_strdup (repo_id);
 	state->enabled = enabled;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
-	pk_task_do_async_action (state);
+	pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_repair_system_async:
+ * pk_task_repair_system_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @cancellable: a #GCancellable or %NULL
  * @progress_callback: (scope notified): the function to run when the progress changes
@@ -2266,34 +2135,32 @@ pk_task_repair_system_async (PkTask *task,
 {
 	PkTaskState *state;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
-	g_autoptr(GSimpleAsyncResult) res = NULL;
+	g_autoptr(GTask) gtask = NULL;
 
 	g_return_if_fail (PK_IS_CLIENT (task));
 	g_return_if_fail (callback_ready != NULL);
 	g_return_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable));
 
-	res = g_simple_async_result_new (G_OBJECT (task), callback_ready, user_data, pk_task_repair_system_async);
-
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_REPAIR_SYSTEM;
-	state->res = g_object_ref (res);
-	state->task = g_object_ref (task);
-	if (cancellable != NULL)
-		state->cancellable = g_object_ref (cancellable);
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
 	state->request = pk_task_generate_request_id ();
 
+	gtask = g_task_new (task, cancellable, callback_ready, user_data);
+	g_task_set_source_tag (gtask, pk_task_repair_system_async);
 	g_debug ("adding state %p", state);
-	g_ptr_array_add (task->priv->array, state);
+	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
+
 
 	/* start trusted repair system async */
 	if (task->priv->simulate && klass->simulate_question != NULL)
-		pk_task_do_async_simulate_action (state);
+		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
-		pk_task_do_async_action (state);
+		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
@@ -2311,18 +2178,20 @@ pk_task_repair_system_async (PkTask *task,
 PkResults *
 pk_task_generic_finish (PkTask *task, GAsyncResult *res, GError **error)
 {
-	GSimpleAsyncResult *simple;
+	GTask *gtask;
+	PkTaskState *state;
 
 	g_return_val_if_fail (PK_IS_TASK (task), NULL);
-	g_return_val_if_fail (G_IS_SIMPLE_ASYNC_RESULT (res), NULL);
+	g_return_val_if_fail (g_task_is_valid (res, task), NULL);
 	g_return_val_if_fail (error == NULL || *error == NULL, NULL);
 
-	simple = G_SIMPLE_ASYNC_RESULT (res);
+	gtask = G_TASK (res);
+	state = g_task_get_task_data (gtask);
+	/* remove from table */
+	g_debug ("remove state %p", state);
+	g_hash_table_remove (task->priv->gtasks, GUINT_TO_POINTER (state->request));
 
-	if (g_simple_async_result_propagate_error (simple, error))
-		return NULL;
-
-	return g_object_ref (g_simple_async_result_get_op_res_gpointer (simple));
+	return g_task_propagate_pointer (gtask, error);
 }
 
 /**
@@ -2581,7 +2450,7 @@ pk_task_class_init (PkTaskClass *klass)
 	 */
 	pspec = g_param_spec_boolean ("simulate", NULL, NULL,
 				      TRUE,
-				      G_PARAM_READWRITE);
+				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_SIMULATE, pspec);
 
 	/**
@@ -2593,7 +2462,7 @@ pk_task_class_init (PkTaskClass *klass)
 	 */
 	pspec = g_param_spec_boolean ("only-download", NULL, NULL,
 				      FALSE,
-				      G_PARAM_READWRITE);
+				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_ONLY_PREPARE, pspec);
 
 	/**
@@ -2605,7 +2474,7 @@ pk_task_class_init (PkTaskClass *klass)
 	 */
 	pspec = g_param_spec_boolean ("only-trusted", NULL, NULL,
 				      TRUE,
-				      G_PARAM_READWRITE);
+				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_ONLY_TRUSTED, pspec);
 
 	/**
@@ -2617,7 +2486,7 @@ pk_task_class_init (PkTaskClass *klass)
 	 */
 	pspec = g_param_spec_boolean ("allow-reinstall", NULL, NULL,
 				      FALSE,
-				      G_PARAM_READWRITE);
+				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_ALLOW_REINSTALL, pspec);
 
 	/**
@@ -2629,7 +2498,7 @@ pk_task_class_init (PkTaskClass *klass)
 	 */
 	pspec = g_param_spec_boolean ("allow-downgrade", NULL, NULL,
 				      FALSE,
-				      G_PARAM_READWRITE);
+				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_ALLOW_DOWNGRADE, pspec);
 
 	g_type_class_add_private (klass, sizeof (PkTaskPrivate));
@@ -2642,7 +2511,7 @@ static void
 pk_task_init (PkTask *task)
 {
 	task->priv = PK_TASK_GET_PRIVATE (task);
-	task->priv->array = g_ptr_array_new ();
+	task->priv->gtasks = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_object_unref);
 	task->priv->simulate = TRUE;
 	task->priv->allow_reinstall = FALSE;
 	task->priv->allow_downgrade = FALSE;
@@ -2655,7 +2524,7 @@ static void
 pk_task_finalize (GObject *object)
 {
 	PkTask *task = PK_TASK (object);
-	g_ptr_array_unref (task->priv->array);
+	g_clear_pointer (&task->priv->gtasks, g_hash_table_unref);
 	G_OBJECT_CLASS (pk_task_parent_class)->finalize (object);
 }
 

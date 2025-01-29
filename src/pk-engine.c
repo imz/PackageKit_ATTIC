@@ -329,6 +329,21 @@ pk_engine_set_locked (PkEngine *engine, gboolean is_locked)
 }
 
 static void
+pk_engine_backend_installed_changed_cb (PkBackend *backend, PkEngine *engine)
+{
+	g_return_if_fail (PK_IS_ENGINE (engine));
+
+	g_debug ("emitting InstalledChanged");
+	g_dbus_connection_emit_signal (engine->priv->connection,
+				       NULL,
+				       PK_DBUS_PATH,
+				       PK_DBUS_INTERFACE,
+				       "InstalledChanged",
+				       NULL,
+				       NULL);
+}
+
+static void
 pk_engine_backend_repo_list_changed_cb (PkBackend *backend, PkEngine *engine)
 {
 	g_return_if_fail (PK_IS_ENGINE (engine));
@@ -686,7 +701,7 @@ pk_engine_set_proxy (PkEngine *engine,
 
 	/* check length of http */
 	len = pk_strlen (proxy_http, 1024);
-	if (len == 1024) {
+	if (len >= 1024) {
 		error = g_error_new_literal (PK_ENGINE_ERROR,
 					     PK_ENGINE_ERROR_CANNOT_SET_PROXY,
 					     "http proxy was too long");
@@ -696,7 +711,7 @@ pk_engine_set_proxy (PkEngine *engine,
 
 	/* check length of ftp */
 	len = pk_strlen (proxy_ftp, 1024);
-	if (len == 1024) {
+	if (len >= 1024) {
 		error = g_error_new_literal (PK_ENGINE_ERROR,
 					     PK_ENGINE_ERROR_CANNOT_SET_PROXY,
 					     "ftp proxy was too long");
@@ -919,7 +934,7 @@ pk_engine_network_state_changed_cb (GNetworkMonitor *network_monitor,
 static void
 pk_engine_setup_file_monitors (PkEngine *engine)
 {
-	const gchar *filename = "/etc/PackageKit/PackageKit.conf";
+	const gchar *filename = SYSCONFDIR "/PackageKit/PackageKit.conf";
 	g_autoptr(GError) error = NULL;
 	g_autoptr(GFile) file_binary = NULL;
 	g_autoptr(GFile) file_conf = NULL;
@@ -1942,6 +1957,8 @@ pk_engine_new (GKeyFile *conf)
 	engine = g_object_new (PK_TYPE_ENGINE, NULL);
 	engine->priv->conf = g_key_file_ref (conf);
 	engine->priv->backend = pk_backend_new (engine->priv->conf);
+	g_signal_connect (engine->priv->backend, "installed-changed",
+			  G_CALLBACK (pk_engine_backend_installed_changed_cb), engine);
 	g_signal_connect (engine->priv->backend, "repo-list-changed",
 			  G_CALLBACK (pk_engine_backend_repo_list_changed_cb), engine);
 	g_signal_connect (engine->priv->backend, "updates-changed",

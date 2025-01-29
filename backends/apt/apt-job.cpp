@@ -511,7 +511,8 @@ void AptJob::emitUpdates(PkgList &output, PkBitfield filters)
         state = PK_INFO_ENUM_NORMAL;
 
 
-        stagePackageForEmit(pkgArray, pkgInfo.ver, PK_INFO_ENUM_UNKNOWN, state);
+        // NOTE: Frontends expect us to pass the update urgency as both its state *and* actual urgency value here.
+        stagePackageForEmit(pkgArray, pkgInfo.ver, state, state);
     }
 
     // emit
