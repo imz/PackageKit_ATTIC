@@ -165,6 +165,57 @@ PkGroupEnum get_enum_group(string group)
     }
 }
 
+void changesFromChangelog(GMatchInfo *changelog_match_info, GPtrArray *changelogs)
+{
+    if (!g_match_info_matches(changelog_match_info)) {
+        return;
+    }
+
+    auto *match = g_match_info_fetch(changelog_match_info, 0);
+    g_ptr_array_add(changelogs, (gpointer) match);
+
+    g_match_info_next(changelog_match_info, NULL);
+
+    return changesFromChangelog(changelog_match_info, changelogs);
+}
+
+GPtrArray* getChangelogChanges(AptCacheFile &CacheFile,
+                         pkgCache::VerIterator &Ver)
+{
+
+    GRegex *changelog_re;
+    GMatchInfo *changelog_match_info;
+    auto *changelogs = g_ptr_array_new();
+
+    changelog_re = g_regex_new("\\*\\s[^\\n]*(?:\\n(?!\\*\\s).*)*",
+                           G_REGEX_MULTILINE,
+                           G_REGEX_MATCH_DEFAULT,
+                           NULL);
+
+    pkgCache::VerFileIterator Vf = Ver.FileList();
+    for (; Vf.end() == false; Vf++) {
+        if ((Vf.File()->Flags & pkgCache::Flag::NotSource) == 0) {
+            break;
+        }
+    }
+
+    if (Vf.end() == true) {
+        Vf = Ver.FileList();
+    }
+
+    pkgRecords Recs(*CacheFile);
+    pkgRecords::Parser &P = Recs.Lookup(Vf);
+    auto common_changelog = P.Changelog();
+
+    g_regex_match (changelog_re, common_changelog.c_str(), G_REGEX_MATCH_DEFAULT, &changelog_match_info);
+    changesFromChangelog(changelog_match_info, changelogs);
+
+    g_match_info_free(changelog_match_info);
+    g_regex_unref(changelog_re);
+
+    return changelogs;
+}
+
 string fetchChangelogData(AptCacheFile &CacheFile,
                           pkgAcquire &Fetcher,
                           pkgCache::VerIterator Ver,
@@ -174,6 +225,55 @@ string fetchChangelogData(AptCacheFile &CacheFile,
                           string *issued)
 {
     string changelog;
+
+    auto *changelogs = getChangelogChanges(CacheFile, Ver);
+    for (guint i = 0; i < changelogs->len; ++i) {
+        auto *changelog_entry = (gchar *)g_ptr_array_index(changelogs, i);
+        changelog.append(changelog_entry);
+    }
+
+    if (changelog.empty()) {
+        return changelog;
+    }
+
+    changelog.insert(0, "\n");
+
+    GRegex *content_re;
+    GMatchInfo *content_match_info;
+
+    content_re = g_regex_new("\\*\\s+(?<date>.*\\d{4})\\s+(?<packager>.*)\\s+(?<mail><.*>)\\s+(?<version>.*?)\\n(?<content>.*)",
+                             G_REGEX_DOTALL,
+                             G_REGEX_MATCH_DEFAULT,
+                             NULL);
+
+    auto *changelog_entry = (gchar *)g_ptr_array_index(changelogs, 0);
+
+    g_regex_match(content_re, changelog_entry, G_REGEX_MATCH_DEFAULT, &content_match_info);
+    if (g_match_info_matches(content_match_info)) {
+        auto *pkg_date = g_match_info_fetch_named(content_match_info, "date");
+        auto *pkg_packager = g_match_info_fetch_named(content_match_info, "packager");
+        auto *pkg_mail = g_match_info_fetch_named(content_match_info, "mail");
+        auto *pkg_version = g_match_info_fetch_named(content_match_info, "version");
+        auto *pkg_content = g_match_info_fetch_named(content_match_info, "content");
+
+        auto* formatChangelog = g_strdup_printf("\n== %s ==\n"
+                                                "%s — %s %s %s", pkg_version, pkg_content,
+                                                pkg_packager, pkg_mail, pkg_date);
+        update_text->append(formatChangelog);
+        issued->append(pkg_date);
+
+        g_free(pkg_date);
+        g_free(pkg_packager);
+        g_free(pkg_mail);
+        g_free(pkg_version);
+        g_free(pkg_content);
+
+        g_match_info_next(content_match_info, NULL);
+    }
+
+    g_match_info_free(content_match_info);
+    g_ptr_array_free(changelogs, true);
+    g_regex_unref(content_re);
 
 #if 0
     pkgAcqChangelog *c = new pkgAcqChangelog(&Fetcher, Ver);
@@ -188,7 +288,6 @@ string fetchChangelogData(AptCacheFile &CacheFile,
     pkgRecords::Parser &rec=Recs.Lookup(Ver.FileList());
     string srcpkg = rec.SourcePkg().empty() ? Pkg.Name() : rec.SourcePkg();
 #endif
-    changelog = "Changelog for this version is not yet available";
 
 #if 0
     // return empty string if we don't have a file to read

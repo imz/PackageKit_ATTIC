@@ -859,8 +859,8 @@ void AptJob::stageUpdateDetail(GPtrArray *updateArray, const pkgCache::VerIterat
     updates[0] = current_package_id;
     updates[1] = NULL;
 
-    g_autoptr(GPtrArray) bugzilla_urls = getBugzillaUrls(changelog);
-    g_autoptr(GPtrArray) cve_urls = getCVEUrls(changelog);
+    g_autoptr(GPtrArray) bugzilla_urls = getBugzillaUrls(update_text);
+    g_autoptr(GPtrArray) cve_urls = getCVEUrls(update_text);
     g_autoptr(GPtrArray) obsoletes = g_ptr_array_new();
 
     for (auto deps = candver.DependsList(); not deps.end(); ++deps)
