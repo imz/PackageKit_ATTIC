@@ -175,6 +175,19 @@ string fetchChangelogData(AptCacheFile &CacheFile,
 {
     string changelog;
 
+    pkgCache::VerFileIterator Vf = Ver.FileList();
+    for (; Vf.end() == false; Vf++)
+     if ((Vf.File()->Flags & pkgCache::Flag::NotSource) == 0)
+       break;
+
+    if (Vf.end() == true)
+     Vf = Ver.FileList();
+
+    pkgRecords Recs(*CacheFile);
+    pkgRecords::Parser &P = Recs.Lookup(Vf);
+
+    changelog = P.Changelog();
+
 #if 0
     pkgAcqChangelog *c = new pkgAcqChangelog(&Fetcher, Ver);
 
@@ -188,7 +201,12 @@ string fetchChangelogData(AptCacheFile &CacheFile,
     pkgRecords::Parser &rec=Recs.Lookup(Ver.FileList());
     string srcpkg = rec.SourcePkg().empty() ? Pkg.Name() : rec.SourcePkg();
 #endif
-    changelog = "Changelog for this version is not yet available";
+
+    if (changelog.empty()) {
+        changelog = "Changelog for this version is not yet available";
+    } else {
+        changelog.insert(0, "\n");
+    }
 
 #if 0
     // return empty string if we don't have a file to read
