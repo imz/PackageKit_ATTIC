@@ -36,6 +36,17 @@ using namespace std;
 PkGroupEnum get_enum_group(string group);
 
 /**
+ * Extract changes from the changelog
+ */
+void changesFromChangelog(GMatchInfo *changelog_match_info, GPtrArray *changelogs);
+
+/**
+ * Return an array of package changes
+ */
+GPtrArray* getChangelogChanges(AptCacheFile &CacheFile,
+                         pkgCache::VerIterator &Ver);
+
+/**
   * Return the changelog and extract details about the changes.
   */
 string fetchChangelogData(AptCacheFile &CacheFile,
