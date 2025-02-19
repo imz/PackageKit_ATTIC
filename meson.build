@@ -1,5 +1,5 @@
 project('PackageKit', 'c',
-  version : '1.3.0',
+  version : '1.3.1',
   license : 'LGPL-2.1+',
   meson_version : '>=0.50',
   default_options : ['warning_level=2', 'c_std=c99'],
@@ -37,16 +37,14 @@ if get_option('systemd')
 
   add_project_arguments ('-DHAVE_SYSTEMD_SD_DAEMON_H=1', language: 'c')
   add_project_arguments ('-DHAVE_SYSTEMD_SD_LOGIN_H=1', language: 'c')
-else
-  if get_option('offline_update')
-    error('Offline updates requires Systemd, use -Dsystemd=true to enable it or -Doffline_update=false to disable offline updates')
-  endif
+  add_project_arguments ('-DHAVE_SYSTEMD_SD_JOURNAL_H=1', language: 'c')
 endif
 
 elogind = []
 if get_option('elogind')
   elogind = dependency('elogind', version: '>=229.4')
   add_project_arguments ('-DHAVE_SYSTEMD_SD_LOGIN_H=1', language: 'c')
+  add_project_arguments ('-DHAVE_SYSTEMD_SD_JOURNAL_H=1', language: 'c')
 endif
 
 if get_option('local_checkout')
