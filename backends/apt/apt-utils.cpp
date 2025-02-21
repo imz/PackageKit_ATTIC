@@ -189,7 +189,7 @@ GPtrArray* getChangelogChanges(AptCacheFile &CacheFile,
 
     changelog_re = g_regex_new("\\*\\s[^\\n]*(?:\\n(?!\\*\\s).*)*",
                            G_REGEX_MULTILINE,
-                           G_REGEX_MATCH_DEFAULT,
+                           GRegexMatchFlags{},
                            NULL);
 
     pkgCache::VerFileIterator Vf = Ver.FileList();
@@ -207,7 +207,7 @@ GPtrArray* getChangelogChanges(AptCacheFile &CacheFile,
     pkgRecords::Parser &P = Recs.Lookup(Vf);
     auto common_changelog = P.Changelog();
 
-    g_regex_match (changelog_re, common_changelog.c_str(), G_REGEX_MATCH_DEFAULT, &changelog_match_info);
+    g_regex_match (changelog_re, common_changelog.c_str(), GRegexMatchFlags{}, &changelog_match_info);
     changesFromChangelog(changelog_match_info, changelogs);
 
     g_match_info_free(changelog_match_info);
@@ -242,14 +242,14 @@ string fetchChangelogData(AptCacheFile &CacheFile,
 
     content_re = g_regex_new("\\*\\s+(?<date>.*\\d{4})\\s+(?<packager>.*)\\s+(?<mail><.*>)\\s+(?<version>.*?)\\b\\n(?<content>.*)",
                              G_REGEX_DOTALL,
-                             G_REGEX_MATCH_DEFAULT,
+                             GRegexMatchFlags{},
                              NULL);
 
     bool isEnd = false;
     for (guint i = 0; i < changelogs->len && !isEnd; ++i) {
         auto *changelog_entry = (gchar *)g_ptr_array_index(changelogs, i);
 
-        g_regex_match(content_re, changelog_entry, G_REGEX_MATCH_DEFAULT, &content_match_info);
+        g_regex_match(content_re, changelog_entry, GRegexMatchFlags{}, &content_match_info);
         if (g_match_info_matches(content_match_info)) {
             auto *pkg_date = g_match_info_fetch_named(content_match_info, "date");
             auto *pkg_packager = g_match_info_fetch_named(content_match_info, "packager");
@@ -440,7 +440,7 @@ GPtrArray* getBugzillaUrls(const string &changelog)
                         0);
     bug_num_re = g_regex_new("(?'bug'\\d+)",
                              G_REGEX_OPTIMIZE,
-                             G_REGEX_MATCH_DEFAULT,
+                             GRegexMatchFlags{},
                              0);
 
     g_regex_match (regex, changelog.c_str(), G_REGEX_MATCH_NEWLINE_ANY, &match_info);
@@ -448,7 +448,7 @@ GPtrArray* getBugzillaUrls(const string &changelog)
         gchar *bugs = g_match_info_fetch_named(match_info, "bugs");
 
         GMatchInfo *bug_num_minfo;
-        g_regex_match(bug_num_re, bugs, G_REGEX_MATCH_DEFAULT, &bug_num_minfo);
+        g_regex_match(bug_num_re, bugs, GRegexMatchFlags{}, &bug_num_minfo);
         while (g_match_info_matches(bug_num_minfo)) {
             gchar *bug = g_match_info_fetch_named(bug_num_minfo, "bug");
             gchar *bugLink;
