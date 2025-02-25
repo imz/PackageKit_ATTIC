@@ -203,6 +203,7 @@ pk_client_state_remove (PkClient *client, PkClientState *state)
 	gboolean is_idle;
 
 	g_ptr_array_remove (priv->calls, state);
+	g_object_unref(state);
 
 	/* has the idle state changed? */
 	is_idle = (priv->calls->len == 0);
@@ -1656,6 +1657,7 @@ pk_client_proxy_connect (PkClientState *state)
 {
 	guint i;
 	g_auto(GStrv) props = NULL;
+	g_object_ref(state);
 
 	/* coldplug properties */
 	props = g_dbus_proxy_get_cached_property_names (state->proxy);
