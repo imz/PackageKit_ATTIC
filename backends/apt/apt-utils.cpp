@@ -240,7 +240,7 @@ string fetchChangelogData(AptCacheFile &CacheFile,
     GRegex *content_re;
     GMatchInfo *content_match_info;
 
-    content_re = g_regex_new("\\*\\s+(?<date>.*\\d{4})\\s+(?<packager>.*)\\s+(?<mail><.*>)\\s+(?<version>.*?)\\n(?<content>.*)",
+    content_re = g_regex_new("\\*\\s+(?<date>.*\\d{4})\\s+(?<packager>.*)\\s+(?<mail><.*>)\\s+(?<version>.*?)\\b\\n(?<content>.*)",
                              G_REGEX_DOTALL,
                              G_REGEX_MATCH_DEFAULT,
                              NULL);
