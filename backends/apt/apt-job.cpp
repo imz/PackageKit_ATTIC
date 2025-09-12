@@ -148,6 +148,24 @@ bool AptJob::init(gchar **localDebs)
     }
 
     // Create the AptCacheFile class to search for packages
+    if (localDebs) {
+        PkBitfield flags = pk_backend_job_get_transaction_flags(m_job);
+        if (pk_bitfield_contain(flags, PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED)) {
+            // We are NOT simulating and have untrusted packages
+            // fail the transaction.
+            pk_backend_job_error_code(m_job,
+                                  PK_ERROR_ENUM_CANNOT_INSTALL_REPO_UNSIGNED,
+                                  "Local packages cannot be authenticated");
+            return false;
+        }
+
+        for (guint i = 0; i < g_strv_length(localDebs); ++i) {
+            if (strlen(localDebs[i])) {
+                _config->Set("APT::Arguments::", localDebs[i]);
+            }
+        }
+    }
+
     m_cache.reset(new AptCacheFile(m_job, withLock, &m_progress));
     while (m_cache->Open() == false) {
         if (withLock == false || (timeout <= 0)) {
@@ -1544,6 +1562,26 @@ void AptJob::markAutoInstalled(const PkgList &pkgs)
         // Mark package as auto-installed
         (*m_cache)->MarkAuto(pkInfo.ver.ParentPkg(), pkgDepCache::AutoMarkFlag::Auto);
     }
+}
+
+PkgList AptJob::resolveLocalFiles(gchar **localDebs)
+{
+    PkgList ret;
+    for (guint i = 0; i < g_strv_length(localDebs); ++i) {
+        pkgCache::PkgIterator const P = (*m_cache)->FindPkg(localDebs[i]);
+        if (P.end()) {
+            continue;
+        }
+
+        // Set any version providing the .deb as the candidate.
+        for (auto Prv = P.ProvidesList(); Prv.end() == false; Prv++)
+            ret.append(Prv.OwnerVer());
+
+        // TODO do we need this?
+        // via cacheset to have our usual virtual handling
+        //APT::VersionContainerInterface::FromPackage(&(verset[MOD_INSTALL]), Cache, P, APT::CacheSetHelper::CANDIDATE, helper);
+    }
+    return ret;
 }
 
 bool AptJob::runTransaction(const PkgList &install, const PkgList &remove, const PkgList &update,

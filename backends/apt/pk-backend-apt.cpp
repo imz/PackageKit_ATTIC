@@ -618,7 +618,11 @@ static void backend_manage_packages_thread(PkBackendJob *job, GVariant *params, 
 
     // Get the transaction role since this method is called by install/remove/update/repair
     PkRoleEnum role = pk_backend_job_get_role(job);
-    if (role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
+    if (role == PK_ROLE_ENUM_INSTALL_FILES) {
+        g_variant_get(params, "(t^a&s)",
+                      &transaction_flags,
+                      &full_paths);
+    } else if (role == PK_ROLE_ENUM_REMOVE_PACKAGES) {
         g_variant_get(params, "(t^a&sbb)",
                       &transaction_flags,
                       &package_ids,
@@ -660,6 +664,8 @@ static void backend_manage_packages_thread(PkBackendJob *job, GVariant *params, 
             installPkgs = apt->resolvePackageIds(package_ids);
         } else if (role == PK_ROLE_ENUM_UPDATE_PACKAGES) {
             updatePkgs = apt->resolvePackageIds(package_ids);
+        } else if (role == PK_ROLE_ENUM_INSTALL_FILES) {
+            installPkgs = apt->resolveLocalFiles(full_paths);
         } else {
             pk_backend_job_error_code(job,
                                       PK_ERROR_ENUM_PACKAGE_NOT_FOUND,
@@ -940,6 +946,7 @@ PkBitfield pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_REPO_ENABLE,
                 PK_ROLE_ENUM_REPAIR_SYSTEM,
                 PK_ROLE_ENUM_REPO_REMOVE,
+                PK_ROLE_ENUM_INSTALL_FILES,
                 -1);
 
     return roles;
