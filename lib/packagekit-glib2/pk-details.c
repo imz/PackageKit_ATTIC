@@ -48,6 +48,7 @@ struct _PkDetailsPrivate
 {
 	gchar				*package_id;
 	gchar				*license;
+	gchar				*maintainer;
 	PkGroupEnum			 group;
 	gchar				*description;
 	gchar				*url;
@@ -60,6 +61,7 @@ enum {
 	PROP_0,
 	PROP_PACKAGE_ID,
 	PROP_LICENSE,
+	PROP_MAINTAINER,
 	PROP_GROUP,
 	PROP_DESCRIPTION,
 	PROP_URL,
@@ -103,6 +105,23 @@ pk_details_get_license (PkDetails *details)
 {
 	g_return_val_if_fail (details != NULL, NULL);
 	return details->priv->license;
+}
+
+/**
+ * pk_details_get_maintainer:
+ * @details: a #PkDetails instance
+ *
+ * Gets the package maintainer
+ *
+ * Return value: string value
+ *
+ * Since: 1.3.0
+ **/
+const gchar *
+pk_details_get_maintainer (PkDetails *details)
+{
+	g_return_val_if_fail (details != NULL, NULL);
+	return details->priv->maintainer;
 }
 
 /**
@@ -224,6 +243,9 @@ pk_details_get_property (GObject *object, guint prop_id, GValue *value, GParamSp
 	case PROP_LICENSE:
 		g_value_set_string (value, priv->license);
 		break;
+	case PROP_MAINTAINER:
+		g_value_set_string (value, priv->maintainer);
+		break;
 	case PROP_GROUP:
 		g_value_set_enum (value, priv->group);
 		break;
@@ -265,6 +287,10 @@ pk_details_set_property (GObject *object, guint prop_id, const GValue *value, GP
 	case PROP_LICENSE:
 		g_free (priv->license);
 		priv->license = g_strdup (g_value_get_string (value));
+		break;
+	case PROP_MAINTAINER:
+		g_free (priv->maintainer);
+		priv->maintainer = g_strdup (g_value_get_string (value));
 		break;
 	case PROP_GROUP:
 		priv->group = g_value_get_enum (value);
@@ -324,6 +350,16 @@ pk_details_class_init (PkDetailsClass *klass)
 				     NULL,
 				     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_LICENSE, pspec);
+
+	/**
+	 * PkDetails:maintainer:
+	 *
+	 * Since: 1.3.0
+	 */
+	pspec = g_param_spec_string ("maintainer", NULL, NULL,
+				     NULL,
+				     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+	g_object_class_install_property (object_class, PROP_MAINTAINER, pspec);
 
 	/**
 	 * PkDetails:group:
@@ -409,6 +445,7 @@ pk_details_finalize (GObject *object)
 
 	g_free (priv->package_id);
 	g_free (priv->license);
+	g_free (priv->maintainer);
 	g_free (priv->description);
 	g_free (priv->url);
 	g_free (priv->summary);

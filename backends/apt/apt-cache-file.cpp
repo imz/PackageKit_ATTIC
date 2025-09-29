@@ -454,6 +454,25 @@ pkgCache::VerIterator AptCacheFile::findCandidateVer(const pkgCache::PkgIterator
     return (*this)[pkg].CandidateVerIter(*this);
 }
 
+std::string AptCacheFile::getMaintainer(const pkgCache::VerIterator &ver)
+{
+    if (ver.end()) {
+        return string();
+    }
+
+    pkgCache::VerFileIterator vf = ver.FileList();
+    if (vf.end()) {
+        return string();
+    }
+
+    pkgRecords * const recs = GetPkgRecords();
+    if (!recs) {
+        return string();
+    }
+
+    return recs->Lookup(vf).Maintainer();
+}
+
 std::string AptCacheFile::getShortDescription(const pkgCache::VerIterator &ver)
 {
     if (ver.end()) {

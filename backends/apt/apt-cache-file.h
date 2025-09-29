@@ -121,6 +121,10 @@ public:
      */
     pkgCache::VerIterator findVer(const pkgCache::PkgIterator &pkg);
 
+    /** \return a package maintainer
+     */
+    std::string getMaintainer(const pkgCache::VerIterator &ver);
+
     /** \return a short description string corresponding to the given
      *  version.
      */

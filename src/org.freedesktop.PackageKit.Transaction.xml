@@ -1694,6 +1694,10 @@
                 <doc:definition>The license string, e.g. <doc:tt>GPLv2+</doc:tt> [<doc:tt>s</doc:tt>]</doc:definition>
               </doc:item>
               <doc:item>
+                <doc:term>maintainer</doc:term>
+                <doc:definition>The maintainer of the package [<doc:tt>s</doc:tt>]</doc:definition>
+              </doc:item>
+              <doc:item>
                 <doc:term>group</doc:term>
                 <doc:definition>The enumerated package group description [<doc:tt>u</doc:tt>]</doc:definition>
               </doc:item>

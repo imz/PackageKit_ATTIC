@@ -618,6 +618,10 @@ pk_transaction_details_cb (PkBackendJob *job,
 	if (tmp != NULL)
 		g_variant_builder_add (&builder, "{sv}", "license",
 				       g_variant_new_string (tmp));
+	tmp = pk_details_get_maintainer (item);
+	if (tmp != NULL)
+		g_variant_builder_add (&builder, "{sv}", "maintainer",
+				       g_variant_new_string (tmp));
 	size = pk_details_get_size (item);
 	if (size != 0)
 		g_variant_builder_add (&builder, "{sv}", "size",

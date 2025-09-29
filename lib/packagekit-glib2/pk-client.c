@@ -1350,9 +1350,10 @@ pk_client_signal_cb (GDBusProxy *proxy,
 		} else {
 			guint64 tmp_uint64;
 			g_variant_get (parameters,
-				       "(&s&su&s&st)",
+				       "(&s&s&su&s&st)",
 				       &tmp_str[0],
 				       &tmp_str[1],
+				       &tmp_str[2],
 				       &tmp_uint,
 				       &tmp_str[3],
 				       &tmp_str[4],
@@ -1360,6 +1361,7 @@ pk_client_signal_cb (GDBusProxy *proxy,
 			g_object_set (item,
 				      "package-id", tmp_str[0],
 				      "license", tmp_str[1],
+				      "maintainer", tmp_str[2],
 				      "group", tmp_uint,
 				      "description", tmp_str[3],
 				      "url", tmp_str[4],
@@ -1368,6 +1370,7 @@ pk_client_signal_cb (GDBusProxy *proxy,
 				      "transaction-id", state->transaction_id,
 				      NULL);
 		}
+
 		pk_results_add_details (state->results, item);
 		return;
 	}

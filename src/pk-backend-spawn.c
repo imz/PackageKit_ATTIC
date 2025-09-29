@@ -192,27 +192,27 @@ pk_backend_spawn_parse_stdout (PkBackendSpawn *backend_spawn,
 				     command, size);
 			return FALSE;
 		}
-		group = pk_group_enum_from_string (sections[4]);
+		group = pk_group_enum_from_string (sections[5]);
 
 		/* ITS4: ignore, checked for overflow */
-		package_size = atol (sections[7]);
+		package_size = atol (sections[8]);
 		if (package_size > 1073741824) {
 			g_set_error_literal (error, 1, 0,
 					     "package size cannot be that large");
 			return FALSE;
 		}
-		g_strdelimit (sections[5], PK_UNSAFE_DELIMITERS, ' ');
-		if (!g_utf8_validate (sections[4], -1, NULL)) {
+		g_strdelimit (sections[6], PK_UNSAFE_DELIMITERS, ' ');
+		if (!g_utf8_validate (sections[5], -1, NULL)) {
 			g_set_error (error, 1, 0,
 				     "text '%s' was not valid UTF8!",
-				     sections[5]);
+				     sections[6]);
 			return FALSE;
 		}
-		text = g_strdup (sections[5]);
+		text = g_strdup (sections[6]);
 		/* convert ; to \n as we can't emit them on stdout */
 		g_strdelimit (text, ";", '\n');
 		pk_backend_job_details (job, sections[1], sections[2], sections[3],
-					group, text, sections[6], package_size);
+					sections[4], group, text, sections[7], package_size);
 		g_free (text);
 	} else if (g_strcmp0 (command, "finished") == 0) {
 		if (size != 1) {

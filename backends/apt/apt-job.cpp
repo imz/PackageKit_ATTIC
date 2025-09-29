@@ -795,6 +795,7 @@ void AptJob::emitPackageDetail(const pkgCache::VerIterator &ver)
                            package_id,
                            m_cache->getShortDescription(ver).c_str(),
                            license.c_str(),
+                           m_cache->getMaintainer(ver).c_str(),
                            get_enum_group(section),
                            m_cache->getLongDescriptionParsed(ver).c_str(),
                            "", //rec.Homepage().c_str(),

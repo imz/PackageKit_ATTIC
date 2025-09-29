@@ -1236,13 +1236,14 @@ pk_backend_job_details (PkBackendJob *job,
 			const gchar *package_id,
 			const gchar *summary,
 			const gchar *license,
+			const gchar *maintainer,
 			PkGroupEnum group,
 			const gchar *description,
 			const gchar *url,
 			gulong size)
 {
-	pk_backend_job_details_full (job, package_id, summary, license, group,
-				     description, url, size, G_MAXUINT64);
+	pk_backend_job_details_full (job, package_id, summary, license, maintainer,
+				     group, description, url, size, G_MAXUINT64);
 }
 
 void
@@ -1250,6 +1251,7 @@ pk_backend_job_details_full (PkBackendJob *job,
 			     const gchar *package_id,
 			     const gchar *summary,
 			     const gchar *license,
+			     const gchar *maintainer,
 			     PkGroupEnum group,
 			     const gchar *description,
 			     const gchar *url,
@@ -1273,6 +1275,7 @@ pk_backend_job_details_full (PkBackendJob *job,
 		      "package-id", package_id,
 		      "summary", summary,
 		      "license", license,
+		      "maintainer", maintainer,
 		      "group", group,
 		      "description", description,
 		      "url", url,

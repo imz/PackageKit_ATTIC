@@ -870,6 +870,7 @@ pk_package_sack_get_details_cb (GObject *source_object, GAsyncResult *res, gpoin
 		/* set data */
 		g_object_set (package,
 			      "license", pk_details_get_license (item),
+			      "maintainer", pk_details_get_maintainer (item),
 			      "group", pk_details_get_group (item),
 			      "description", pk_details_get_description (item),
 			      "url", pk_details_get_url (item),
