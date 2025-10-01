@@ -59,6 +59,7 @@
 #include "gst-matcher.h"
 #include "apt-messages.h"
 #include "acqpkitstatus.h"
+#include "rpm-file.h"
 
 #define RAMFS_MAGIC     0x858458f6
 
@@ -1347,6 +1348,27 @@ void AptJob::providesMimeType(PkgList &output, gchar **values)
 
         output.append(ver);
     }
+}
+
+void AptJob::emitPackageFilesLocal(const gchar *file)
+{
+    RpmFile rpm(file);
+    if (!rpm.isValid()){
+        return;
+    }
+
+    g_autofree gchar *package_id = pk_package_id_build(rpm.packageName().c_str(),
+                                                       rpm.fullVersion().c_str(),
+                                                       rpm.architecture().c_str(),
+                                                       file);
+
+    g_autoptr(GPtrArray) files = g_ptr_array_new_with_free_func(g_free);
+    for (auto file : rpm.files()) {
+        g_ptr_array_add(files, g_canonicalize_filename(file.c_str(), "/"));
+    }
+
+    g_ptr_array_add(files, NULL);
+    pk_backend_job_files(m_job, package_id, (gchar **) files->pdata);
 }
 
 /**

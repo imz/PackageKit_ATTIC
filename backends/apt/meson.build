@@ -48,6 +48,8 @@ shared_module(
   'gst-matcher.h',
   'pkg-list.cpp',
   'pkg-list.h',
+  'rpm-file.cpp',
+  'rpm-file.h',
   include_directories: packagekit_src_include,
   dependencies: [
     packagekit_glib2_dep,
