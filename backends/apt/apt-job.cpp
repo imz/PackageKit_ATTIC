@@ -772,11 +772,29 @@ void AptJob::emitPackageDetail(const pkgCache::VerIterator &ver)
         size = ver->Size;
     }
 
+    std::string license = "unknown";
+    pkgCache::VerFileIterator fileIter = ver.FileList();
+    if (!fileIter.end() && !fileIter.File().end()) {
+        std::string filePath{ fileIter.File().FileName() };
+
+        if (size_t extStartPos = filePath.find_last_of(".");
+            extStartPos != std::string::npos &&
+            filePath.substr(extStartPos) == ".rpm") {
+            // Try to get the license details from a rpm file
+            RpmFile rpm(filePath);
+            if (rpm.isValid() && !rpm.license().empty()) {
+                license = rpm.license();
+            } else {
+                g_debug("Unable to obtain the package license!");
+            }
+        }
+    }
+
     g_autofree gchar *package_id = m_cache->buildPackageId(ver);
     pk_backend_job_details(m_job,
                            package_id,
                            m_cache->getShortDescription(ver).c_str(),
-                           "unknown",
+                           license.c_str(),
                            get_enum_group(section),
                            m_cache->getLongDescriptionParsed(ver).c_str(),
                            "", //rec.Homepage().c_str(),

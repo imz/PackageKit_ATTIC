@@ -93,6 +93,9 @@ std::string RpmFile::getEntry(rpmTagVal tag) const
         case RPMTAG_CONFLICTNAME:
             g_debug("No Conflicts field in the package");
             break;
+        case RPMTAG_LICENSE:
+            g_debug("No License field in the package");
+            break;
         }
 
         return {};
@@ -133,6 +136,11 @@ std::string RpmFile::conflicts() const
 {
     // not implemented
     return {};
+}
+
+std::string RpmFile::license() const
+{
+    return getEntry(RPMTAG_LICENSE);
 }
 
 std::string RpmFile::summary() const

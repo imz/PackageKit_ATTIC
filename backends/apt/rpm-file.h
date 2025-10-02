@@ -21,6 +21,7 @@ public:
     std::string summary() const;
     std::string description() const;
     std::string conflicts() const;
+    std::string license() const;
     std::vector<std::string> files() const;
 
     bool check();
