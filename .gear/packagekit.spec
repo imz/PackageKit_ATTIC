@@ -121,7 +121,7 @@ BuildArch: noarch
 %patch1 -p1
 %ifarch %e2k
 # workaround for EDG frontend
-sed -i "s|g_autofree gchar \*|g_autofree_edg(gchar) |" backends/apt/apt-{utils,job}.cpp
+sed -i -E 's|g_autofree (gchar \**)\*|g_autofree_edg(\1) |' backends/apt/*.cpp
 
 # Explanation: The workaround is needed only for C++:
 #
