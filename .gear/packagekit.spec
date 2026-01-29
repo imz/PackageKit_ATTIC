@@ -32,6 +32,11 @@ BuildRequires: libgtk+3-devel
 
 BuildRequires: boost-devel
 
+# It provides the stuff needed to run the APT backend: the download methods
+# (/usr/lib*/apt/methods/), conf files (/etc/apt/), and cache dirs
+# (/var/cache/apt/archives/).
+Requires: apt
+
 %description
 PackageKit is a D-Bus abstraction layer that allows the session user
 to manage packages in a secure way using a cross-distro,
@@ -144,6 +149,15 @@ rm -f %buildroot%_datadir/PackageKit/pk-upgrade-distro.sh
 touch %buildroot%_localstatedir/PackageKit/upgrade_lock
 
 %find_lang PackageKit
+
+# We have to choose against which executable to verify the symbols
+# in the backend modules. I've chosen the one that rarely gets to be used
+# (packagekit-direct), so that it receives more "testing" and problems like
+# https://github.com/PackageKit/PackageKit/issues/477 don't stay unnoticed.
+#export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekitd
+export RPM_LD_PRELOAD_packagekit=%buildroot%_libexecdir/packagekit-direct
+export RPM_FILES_TO_LD_PRELOAD_packagekit='%_libdir/packagekit-backend/*.so'
+%set_verify_elf_method strict
 
 %post
 SYSTEMCTL=systemctl
